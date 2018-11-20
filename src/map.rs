@@ -13,6 +13,9 @@ pub struct Map {
     /// The location of keys.
     pub keys: Vec<(usize, usize, char)>,
 
+    /// The color to clear with.
+    pub clear_color: [f32; 4],
+
     /// The filename of the material used for the floor.
     pub material_floor: Option<PathBuf>,
 
@@ -24,6 +27,12 @@ pub struct Map {
 
     /// The filename of the key model.
     pub model_key: PathBuf,
+
+    /// The filename of the fragment shader.
+    pub shader_frag: PathBuf,
+
+    /// The filename of the vertex shader.
+    pub shader_vert: PathBuf,
 }
 
 impl FromStr for Map {
@@ -40,10 +49,13 @@ impl FromStr for Map {
             floor: Vec::new(),
             keys: Vec::new(),
 
+            clear_color: [0.0; 4],
             material_floor: None,
             material_wall: None,
             model_character: None,
             model_key: PathBuf::from("key.obj"),
+            shader_frag: PathBuf::from("main.frag"),
+            shader_vert: PathBuf::from("main.vert"),
         };
 
         let mut rest = &s[h_end_idx + 1..];

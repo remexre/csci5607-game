@@ -51,13 +51,14 @@ impl Options {
 }
 
 fn run(options: Options) -> Fallible<()> {
-    let world = World::from_map_file(options.map_path)?;
+    let gui = GuiSystem::new().context("Failed to create GUI system")?;
 
-    let mut systems = hlist![GuiSystem::new().context("Failed to create GUI system")?];
-
+    let world = World::from_map_file(options.map_path, gui.facade())?;
     let mut state = State::Playing(world);
+
+    let mut systems = hlist![gui];
     let mut last = Instant::now();
-    loop {
+    while !state.should_close() {
         let dt = last.elapsed();
         let dt = dt.subsec_millis() as u64 + 1_000_000 * dt.as_secs();
 
@@ -67,4 +68,6 @@ fn run(options: Options) -> Fallible<()> {
 
         last = Instant::now();
     }
+
+    Ok(())
 }

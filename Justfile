@@ -2,7 +2,7 @@ all: check doc test build-release
 clean:
 	cargo clean
 watch TARGET="all":
-	watchexec -cre rs,toml "just {{TARGET}}"
+	watchexec -re rs,toml "just {{TARGET}}"
 
 bench:
 	cargo +nightly bench --all

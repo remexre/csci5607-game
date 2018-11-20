@@ -2,7 +2,10 @@
 extern crate failure;
 #[macro_use]
 extern crate frunk;
+#[macro_use]
 extern crate glium;
+#[macro_use]
+extern crate lazy_static;
 #[macro_use]
 extern crate log;
 extern crate obj;
@@ -21,7 +24,7 @@ mod state;
 
 pub use crate::{
     components::LocationComponent,
-    gui::{GuiSystem, RenderComponent},
+    gui::{GuiSystem, Model, RenderComponent, Vertex},
     map::{Map, Tile},
     state::{State, World},
 };

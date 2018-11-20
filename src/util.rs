@@ -1,8 +1,7 @@
 //! Miscellaneous utilities.
 
-use failure::{Error, Fallible, ResultExt};
-use obj::{Obj, SimplePolygon};
-use std::{fs::File, io::Read, path::Path, str::FromStr, sync::Arc};
+use failure::{Error, Fallible};
+use std::{fs::File, io::Read, path::Path, str::FromStr};
 
 /// Quick `impl typemap::Key<Value = Self>`.
 macro_rules! impl_Component {
@@ -11,38 +10,6 @@ macro_rules! impl_Component {
             type Value = $ty;
         })*
     }
-}
-
-/// Fully loads an `.obj`.
-pub fn load_obj(path: impl AsRef<Path>) -> Fallible<Arc<Obj<'static, SimplePolygon>>> {
-    // TODO: Caching
-
-    let mut obj = Obj::<SimplePolygon>::load(path.as_ref())
-        .with_context(|_| format_err!("When loading {}", path.as_ref().display()))?;
-    if let Err(errs) = obj.load_mtls() {
-        let mut msg = "Errors while loading MTLs:".to_string();
-        for (file, err) in errs {
-            msg.push('\n');
-            msg += &file;
-            msg += ": ";
-            msg += &err.to_string();
-        }
-        bail!("{}", msg);
-    }
-    println!(
-        "{:?}",
-        obj.objects.into_iter().map(|o| o.name).collect::<Vec<_>>()
-    );
-    //assert!(obj.objects.is_empty());
-
-    Ok(Arc::new(Obj {
-        position: obj.position,
-        texture: obj.texture,
-        normal: obj.normal,
-        objects: Vec::new(),
-        material_libs: obj.material_libs,
-        path: obj.path,
-    }))
 }
 
 /// Logs an error, including its causes and backtrace (if possible).
