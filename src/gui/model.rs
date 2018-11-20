@@ -22,9 +22,13 @@ lazy_static! {
 }
 
 /// A model.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Model {
-    // TODO
+    /// The vertices of the model.
+    pub vertices: Vec<Vertex>,
+
+    /// The index of the VBO, if any.
+    pub vbo: Option<usize>,
 }
 
 impl Model {
@@ -59,6 +63,9 @@ impl Model {
 impl<'a> From<Obj<'a, SimplePolygon>> for Model {
     fn from(obj: Obj<'a, SimplePolygon>) -> Model {
         warn!("TODO Model::from");
-        Model {}
+        Model {
+            vertices: Vec::new(),
+            vbo: None,
+        }
     }
 }

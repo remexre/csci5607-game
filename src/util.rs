@@ -1,6 +1,6 @@
 //! Miscellaneous utilities.
 
-use failure::{Error, Fallible};
+use failure::{Error, Fail, Fallible, ResultExt};
 use std::{fs::File, io::Read, path::Path, str::FromStr};
 
 /// Quick `impl typemap::Key<Value = Self>`.
@@ -35,19 +35,28 @@ pub fn log_err(err: Error) {
 }
 
 /// Reads a file and parses it.
+pub fn read_file(path: impl AsRef<Path>) -> Fallible<String> {
+    let mut file = File::open(path.as_ref())
+        .with_context(|_| format_err!("Couldn't open {}", path.as_ref().display()))?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)
+        .with_context(|_| format_err!("Couldn't read from {}", path.as_ref().display()))?;
+    drop(file);
+    Ok(buf)
+}
+
+/// Reads a file and parses it.
 pub fn read_file_and_parse_to<E, P, T>(path: P) -> Fallible<T>
 where
     E: Into<Error>,
     P: AsRef<Path>,
     T: FromStr<Err = E>,
 {
-    let mut file = File::open(path)?;
-    let mut buf = String::new();
-    file.read_to_string(&mut buf)?;
-    drop(file);
-
-    match buf.parse() {
+    match read_file(path.as_ref()).map_err(Error::from)?.parse() {
         Ok(data) => Ok(data),
-        Err(err) => Err(err.into()),
+        Err(err) => Err(err
+            .into()
+            .context(format_err!("Couldn't parse {}", path.as_ref().display()))
+            .into()),
     }
 }

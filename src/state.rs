@@ -1,8 +1,13 @@
-use crate::{util::read_file_and_parse_to, Entity, LocationComponent, Map, Model, RenderComponent};
+use crate::{
+    gui::RenderData,
+    util::{read_file, read_file_and_parse_to},
+    Entity, LocationComponent, Map, Model, RenderComponent,
+};
 use failure::{Fallible, ResultExt};
 use frunk::hlist::{HCons, HNil};
 use glium::{backend::Facade, Program};
-use std::{collections::HashMap, fs::read_to_string, marker::PhantomData, path::Path};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::{collections::HashMap, path::Path};
 use typemap::{Key, ShareMap};
 
 /// The global game state.
@@ -29,12 +34,6 @@ impl State {
 
 /// The state of the game world during gameplay.
 pub struct World {
-    /// The color to clear the display with each frame.
-    pub clear_color: [f32; 4],
-
-    /// The GLSL program used for rendering.
-    pub program: Program,
-
     next_entity: Entity,
     components: HashMap<Entity, ShareMap>,
 }
@@ -45,28 +44,10 @@ impl World {
         map: Map,
         base_path: impl AsRef<Path>,
         facade: &impl Facade,
-    ) -> Fallible<World> {
+    ) -> Fallible<(RenderData, World)> {
         let base_path = base_path.as_ref();
 
-        let program = Program::from_source(
-            facade,
-            &read_to_string(base_path.join(&map.shader_vert)).with_context(|_| {
-                format_err!(
-                    "Failed to read vertex shader ({})",
-                    map.shader_vert.display()
-                )
-            })?,
-            &read_to_string(base_path.join(&map.shader_frag)).with_context(|_| {
-                format_err!(
-                    "Failed to read fragment shader ({})",
-                    map.shader_frag.display()
-                )
-            })?,
-            None,
-        )?;
         let mut world = World {
-            clear_color: map.clear_color,
-            program,
             next_entity: 0,
             components: HashMap::new(),
         };
@@ -76,7 +57,7 @@ impl World {
         // TODO: map.model_character
 
         // Load the keys.
-        let key_model = Model::load_obj(base_path.join(map.model_key))?;
+        let key_model = Model::load_obj(base_path.join(&map.model_key))?;
         for (x, y, ch) in map.keys {
             world.new_entity(hlist![
                 RenderComponent {
@@ -86,24 +67,38 @@ impl World {
             ]);
         }
 
-        Ok(world)
+        let render_data = RenderData {
+            clear_color: map.clear_color,
+            program: Program::from_source(
+                facade,
+                &read_file(base_path.join(&map.shader_vert))?,
+                &read_file(base_path.join(&map.shader_frag))?,
+                None,
+            )?,
+        };
+        Ok((render_data, world))
     }
 
     /// Loads the world from the map whose file path is given.
-    pub fn from_map_file(path: impl AsRef<Path>, facade: &impl Facade) -> Fallible<World> {
+    pub fn from_map_file(
+        path: impl AsRef<Path>,
+        facade: &impl Facade,
+    ) -> Fallible<(RenderData, World)> {
         let map = read_file_and_parse_to(path.as_ref()).context("While loading map")?;
         let base_path = path.as_ref().parent().unwrap_or_else(|| path.as_ref());
-        let world = World::from_map(map, base_path, facade).context("While building world")?;
-        Ok(world)
+        World::from_map(map, base_path, facade)
+            .context("While building world")
+            .map_err(From::from)
     }
 
     /// Creates a `World` for examples. Don't actually use this!
     pub fn example() -> World {
-        use glium::{backend::glutin::headless::Headless, glutin::HeadlessRendererBuilder};
+        // use glium::{backend::glutin::headless::Headless, glutin::HeadlessRendererBuilder};
 
-        let ctx = HeadlessRendererBuilder::new(1, 1).build().unwrap();
-        let facade = Headless::new(ctx).unwrap();
+        // let ctx = HeadlessRendererBuilder::new(1, 1).build().unwrap();
+        // let facade = Headless::new(ctx).unwrap();
         World {
+            /*
             clear_color: [0.0; 4],
             program: Program::from_source(
                 &facade,
@@ -111,16 +106,82 @@ impl World {
                 "void main(){}",
                 None,
             ).unwrap(),
+            */
             next_entity: 0,
             components: HashMap::new(),
         }
     }
 
     /// Tries to get the given components for a given entity.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate frunk;
+    /// # extern crate game;
+    /// # #[macro_use] extern crate typemap;
+    /// # fn main() {
+    /// #[derive(Debug, PartialEq)]
+    /// struct FooComponent(&'static str);
+    /// impl typemap::Key for FooComponent { type Value = FooComponent; }
+    ///
+    /// #[derive(Debug, PartialEq)]
+    /// struct BarComponent(usize);
+    /// impl typemap::Key for BarComponent { type Value = BarComponent; }
+    ///
+    /// #[derive(Debug, PartialEq)]
+    /// struct BazComponent;
+    /// impl typemap::Key for BazComponent { type Value = BazComponent; }
+    ///
+    /// let mut world = game::World::example();
+    /// let me = world.new_entity(hlist![FooComponent("hello"), BarComponent(42)]);
+    ///
+    /// assert_eq!(world.get(me), Some(hlist![&FooComponent("hello")]));
+    /// assert_eq!(world.get(me), Some(hlist![&BarComponent(42)]));
+    /// assert_eq!(world.get(me), Some(hlist![
+    ///     &FooComponent("hello"),
+    ///     &BarComponent(42),
+    /// ]));
+    /// assert_eq!(world.get::<Hlist![&BazComponent]>(me), None);
+    /// # }
+    /// ```
     pub fn get<'a, C: ComponentRefHList<'a>>(&'a self, entity: Entity) -> Option<C> {
         self.components
             .get(&entity)
             .and_then(ComponentRefHList::get_from_component_map)
+    }
+
+    /// Tries to get a single component, mutably, for a given entity.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate frunk;
+    /// # extern crate game;
+    /// # #[macro_use] extern crate typemap;
+    /// # fn main() {
+    /// #[derive(Debug, PartialEq)]
+    /// struct FooComponent(&'static str);
+    /// impl typemap::Key for FooComponent { type Value = FooComponent; }
+    ///
+    /// #[derive(Debug, PartialEq)]
+    /// struct BarComponent(usize);
+    /// impl typemap::Key for BarComponent { type Value = BarComponent; }
+    ///
+    /// let mut world = game::World::example();
+    /// let me = world.new_entity(hlist![FooComponent("hello")]);
+    ///
+    /// assert_eq!(world.get_mut(me), Some(&mut FooComponent("hello")));
+    /// assert_eq!(world.get_mut::<BarComponent>(me), None);
+    /// # }
+    /// ```
+    pub fn get_mut<T>(&mut self, entity: Entity) -> Option<&mut T>
+    where
+        T: Key<Value = T> + Send + Sync,
+    {
+        self.components
+            .get_mut(&entity)
+            .and_then(ShareMap::get_mut::<T>)
     }
 
     /// Iterates over entities which have all the given components.
@@ -136,10 +197,17 @@ impl World {
     /// struct FooComponent;
     /// impl typemap::Key for FooComponent { type Value = FooComponent; }
     ///
-    /// let world = game::World::example();
-    /// for (e, hlist_pat![foo]) in world.iter() {
+    /// #[derive(Debug)]
+    /// struct BarComponent(usize);
+    /// impl typemap::Key for BarComponent { type Value = BarComponent; }
+    ///
+    /// let mut world = game::World::example();
+    /// world.new_entity(hlist![FooComponent]);
+    /// world.new_entity(hlist![FooComponent, BarComponent(42)]);
+    /// for (e, hlist_pat![foo, bar]) in world.iter() {
     ///     println!("Entity: {:?}", e);
     ///     println!("Foo: {:?}", foo as &FooComponent);
+    ///     println!("Bar: {:?}", bar as &BarComponent);
     /// }
     /// # }
     /// ```
@@ -147,16 +215,59 @@ impl World {
     where
         C: 'a + ComponentRefHList<'a>,
     {
-        Iter(self, self.components.keys(), PhantomData)
+        self.components
+            .keys()
+            .cloned()
+            .filter_map(move |entity| self.get(entity).map(|cs| (entity, cs)))
     }
 
     /// Creates a new entity with the given components.
-    pub fn new_entity<C: ComponentHList>(&mut self, components: C) {
+    pub fn new_entity<C: ComponentHList>(&mut self, components: C) -> Entity {
         let entity = self.next_entity;
         self.next_entity += 1;
         let mut map = ShareMap::custom();
         components.add_to_component_map(&mut map);
         self.components.insert(entity, map);
+        entity
+    }
+
+    /// Iterates in parallel over entities which have all the given components.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate frunk;
+    /// # extern crate game;
+    /// # #[macro_use] extern crate typemap;
+    /// # extern crate rayon;
+    /// # use rayon::iter::ParallelIterator;
+    /// # fn main() {
+    /// #[derive(Debug)]
+    /// struct FooComponent;
+    /// impl typemap::Key for FooComponent { type Value = FooComponent; }
+    ///
+    /// #[derive(Debug)]
+    /// struct BarComponent(usize);
+    /// impl typemap::Key for BarComponent { type Value = BarComponent; }
+    ///
+    /// let mut world = game::World::example();
+    /// world.new_entity(hlist![FooComponent]);
+    /// world.new_entity(hlist![FooComponent, BarComponent(42)]);
+    /// world.par_iter().for_each(|(e, hlist_pat![foo, bar])| {
+    ///     println!("Entity: {:?}", e);
+    ///     println!("Foo: {:?}", foo as &FooComponent);
+    ///     println!("Bar: {:?}", bar as &BarComponent);
+    /// });
+    /// # }
+    /// ```
+    pub fn par_iter<'a, C>(&'a self) -> impl 'a + ParallelIterator<Item = (Entity, C)>
+    where
+        C: 'a + ComponentRefHList<'a> + Send,
+    {
+        self.components
+            .par_iter()
+            .map(|(&k, _)| k)
+            .filter_map(move |entity| self.get(entity).map(|cs| (entity, cs)))
     }
 }
 
@@ -201,24 +312,5 @@ where
 impl<'a> ComponentRefHList<'a> for HNil {
     fn get_from_component_map(_: &'a ShareMap) -> Option<Self> {
         Some(HNil)
-    }
-}
-
-/// An iterator over the components. See `World::iter`.
-struct Iter<'a, C>(
-    &'a World,
-    std::collections::hash_map::Keys<'a, usize, ShareMap>,
-    PhantomData<C>,
-);
-
-impl<'a, C: ComponentRefHList<'a>> Iterator for Iter<'a, C> {
-    type Item = (Entity, C);
-    fn next(&mut self) -> Option<(Entity, C)> {
-        loop {
-            let entity = self.1.next()?.clone();
-            if let Some(cs) = self.0.get(entity) {
-                break Some((entity, cs));
-            }
-        }
     }
 }
