@@ -1,8 +1,11 @@
+use crate::{state::State, System};
 use failure::{Fallible, SyncFailure};
 use glium::{
     glutin::{Api, ContextBuilder, EventsLoop, GlProfile, GlRequest, WindowBuilder},
     Display,
 };
+use obj::{Obj, SimplePolygon};
+use std::sync::Arc;
 
 /// The GUI system.
 pub struct GuiSystem {
@@ -24,10 +27,19 @@ impl GuiSystem {
 
         Ok(GuiSystem { display })
     }
+}
 
-    /// Runs the GUI for one step.
-    pub fn step(&mut self) {
+impl System for GuiSystem {
+    fn step(&mut self, state: &mut State, dt: u64) {
         let mut frame = self.display.draw();
-        unimplemented!()
+        //unimplemented!()
     }
 }
+
+/// A graphical component.
+pub struct RenderComponent {
+    /// The model for the component.
+    pub model: Arc<Obj<'static, SimplePolygon>>,
+}
+
+impl_Component!(RenderComponent);

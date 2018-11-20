@@ -4,7 +4,6 @@ extern crate game;
 extern crate log;
 extern crate serde_json;
 extern crate stderrlog;
-#[macro_use]
 extern crate structopt;
 
 use failure::Fallible;

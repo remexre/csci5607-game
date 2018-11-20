@@ -13,17 +13,17 @@ pub struct Map {
     /// The location of keys.
     pub keys: Vec<(usize, usize, char)>,
 
+    /// The filename of the material used for the floor.
+    pub material_floor: Option<PathBuf>,
+
+    /// The filename of the material used for walls.
+    pub material_wall: Option<PathBuf>,
+
     /// The filename of the character model.
-    pub model_character: PathBuf,
+    pub model_character: Option<PathBuf>,
 
     /// The filename of the key model.
     pub model_key: PathBuf,
-
-    /// The filename of the texture used for the floor.
-    pub texture_floor: PathBuf,
-
-    /// The filename of the texture used for walls.
-    pub texture_wall: PathBuf,
 }
 
 impl FromStr for Map {
@@ -40,10 +40,10 @@ impl FromStr for Map {
             floor: Vec::new(),
             keys: Vec::new(),
 
-            model_character: PathBuf::from("character.obj"),
+            material_floor: None,
+            material_wall: None,
+            model_character: None,
             model_key: PathBuf::from("key.obj"),
-            texture_floor: PathBuf::from("floor.png"),
-            texture_wall: PathBuf::from("wall.png"),
         };
 
         let mut rest = &s[h_end_idx + 1..];

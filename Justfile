@@ -27,6 +27,6 @@ test:
 	cargo test --all
 
 open-docs:
-	cargo doc --open -p common
+	cargo doc --open
 outdated-deps:
 	cargo outdated -R

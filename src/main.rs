@@ -1,17 +1,15 @@
 extern crate failure;
+#[macro_use]
+extern crate frunk;
 extern crate game;
 #[macro_use]
 extern crate log;
 extern crate stderrlog;
-#[macro_use]
 extern crate structopt;
 
-use failure::Fallible;
-use game::{
-    util::{log_err, read_file_and_parse_to},
-    GuiSystem, Map,
-};
-use std::{path::PathBuf, process::exit};
+use failure::{Fallible, ResultExt};
+use game::{util::log_err, GuiSystem, State, SystemStepper, World};
+use std::{path::PathBuf, process::exit, time::Instant};
 use structopt::StructOpt;
 
 fn main() {
@@ -53,10 +51,20 @@ impl Options {
 }
 
 fn run(options: Options) -> Fallible<()> {
-    let map: Map = read_file_and_parse_to(options.map_path)?;
+    let world = World::from_map_file(options.map_path)?;
 
-    let mut gui_system = GuiSystem::new()?;
+    let mut systems = hlist![GuiSystem::new().context("Failed to create GUI system")?];
+
+    let mut state = State::Playing(world);
+    let mut last = Instant::now();
     loop {
-        gui_system.step();
+        let dt = last.elapsed();
+        let dt = dt.subsec_millis() as u64 + 1_000_000 * dt.as_secs();
+
+        systems
+            .to_mut()
+            .map(SystemStepper::with_args(&mut state, dt));
+
+        last = Instant::now();
     }
 }
