@@ -105,7 +105,12 @@ impl World {
         let facade = Headless::new(ctx).unwrap();
         World {
             clear_color: [0.0; 4],
-            program: Program::from_source(&facade, "", "", None).unwrap(),
+            program: Program::from_source(
+                &facade,
+                "void main(){gl_Position=vec4(0);}",
+                "void main(){}",
+                None,
+            ).unwrap(),
             next_entity: 0,
             components: HashMap::new(),
         }
