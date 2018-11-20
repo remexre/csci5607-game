@@ -97,6 +97,20 @@ impl World {
         Ok(world)
     }
 
+    /// Creates a `World` for examples. Don't actually use this!
+    pub fn example() -> World {
+        use glium::{backend::glutin::headless::Headless, glutin::HeadlessRendererBuilder};
+
+        let ctx = HeadlessRendererBuilder::new(1, 1).build().unwrap();
+        let facade = Headless::new(ctx).unwrap();
+        World {
+            clear_color: [0.0; 4],
+            program: Program::from_source(&facade, "", "", None).unwrap(),
+            next_entity: 0,
+            components: HashMap::new(),
+        }
+    }
+
     /// Tries to get the given components for a given entity.
     pub fn get<'a, C: ComponentRefHList<'a>>(&'a self, entity: Entity) -> Option<C> {
         self.components
@@ -105,6 +119,25 @@ impl World {
     }
 
     /// Iterates over entities which have all the given components.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # #[macro_use] extern crate frunk;
+    /// # extern crate game;
+    /// # #[macro_use] extern crate typemap;
+    /// # fn main() {
+    /// #[derive(Debug)]
+    /// struct FooComponent;
+    /// impl typemap::Key for FooComponent { type Value = FooComponent; }
+    ///
+    /// let world = game::World::example();
+    /// for (e, hlist_pat![foo]) in world.iter() {
+    ///     println!("Entity: {:?}", e);
+    ///     println!("Foo: {:?}", foo as &FooComponent);
+    /// }
+    /// # }
+    /// ```
     pub fn iter<'a, C>(&'a self) -> impl 'a + Iterator<Item = (Entity, C)>
     where
         C: 'a + ComponentRefHList<'a>,
