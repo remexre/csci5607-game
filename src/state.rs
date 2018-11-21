@@ -1,13 +1,13 @@
 use crate::{
     gui::RenderData,
-    util::{read_file, read_file_and_parse_to},
+    util::{read_file, read_file_and_parse_to, read_file_and_unjson},
     Entity, LocationComponent, Map, Model, RenderComponent,
 };
 use failure::{Fallible, ResultExt};
 use frunk::hlist::{HCons, HNil};
 use glium::{backend::Facade, Program};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, sync::Arc};
 use typemap::{Key, ShareMap};
 
 /// The global game state.
@@ -33,6 +33,7 @@ impl State {
 }
 
 /// The state of the game world during gameplay.
+#[derive(Default)]
 pub struct World {
     next_entity: Entity,
     components: HashMap<Entity, ShareMap>,
@@ -47,12 +48,25 @@ impl World {
     ) -> Fallible<(RenderData, World)> {
         let base_path = base_path.as_ref();
 
-        let mut world = World {
-            next_entity: 0,
-            components: HashMap::new(),
-        };
+        let mut world = World::default();
 
+        // Add the floor.
+        let floor_model = Arc::new(Model::quad(
+            (0.0, 0.0, 0.0),
+            (0.0, 0.0, map.dims.1 as f32),
+            (map.dims.0 as f32, 0.0, map.dims.1 as f32),
+            (map.dims.0 as f32, 0.0, 0.0),
+            None,
+        ));
         // TODO: map.material_floor
+        world.new_entity(hlist![
+            RenderComponent {
+                model: floor_model.clone(),
+                scale: 1.0,
+            },
+            LocationComponent(0.0, 0.0, 0.0)
+        ]);
+
         // TODO: map.material_wall
         // TODO: map.model_character
 
@@ -61,21 +75,22 @@ impl World {
         for (x, y, ch) in map.keys {
             world.new_entity(hlist![
                 RenderComponent {
-                    model: key_model.clone()
+                    model: key_model.clone(),
+                    scale: 1.0,
                 },
                 LocationComponent(x as f32 + 0.5, y as f32 + 0.5, 0.25)
             ]);
         }
 
-        let render_data = RenderData {
-            clear_color: map.clear_color,
-            program: Program::from_source(
+        let render_data = RenderData::new(
+            map.clear_color,
+            Program::from_source(
                 facade,
                 &read_file(base_path.join(&map.shader_vert))?,
                 &read_file(base_path.join(&map.shader_frag))?,
                 None,
             )?,
-        };
+        );
         Ok((render_data, world))
     }
 
@@ -84,32 +99,23 @@ impl World {
         path: impl AsRef<Path>,
         facade: &impl Facade,
     ) -> Fallible<(RenderData, World)> {
-        let map = read_file_and_parse_to(path.as_ref()).context("While loading map")?;
+        let map = {
+            match read_file_and_unjson(path.as_ref()) {
+                Ok(map) => map,
+                Err(err) => {
+                    warn!("While loading map: {}", err);
+                    warn!("Falling back to old-style map loading...");
+                    let map = read_file_and_parse_to(path.as_ref())
+                        .with_context(|err| format_err!("While loading old-style map: {}", err))?;
+                    info!("Successfully loaded old-style map.");
+                    map
+                }
+            }
+        };
         let base_path = path.as_ref().parent().unwrap_or_else(|| path.as_ref());
         World::from_map(map, base_path, facade)
             .context("While building world")
             .map_err(From::from)
-    }
-
-    /// Creates a `World` for examples. Don't actually use this!
-    pub fn example() -> World {
-        // use glium::{backend::glutin::headless::Headless, glutin::HeadlessRendererBuilder};
-
-        // let ctx = HeadlessRendererBuilder::new(1, 1).build().unwrap();
-        // let facade = Headless::new(ctx).unwrap();
-        World {
-            /*
-            clear_color: [0.0; 4],
-            program: Program::from_source(
-                &facade,
-                "void main(){gl_Position=vec4(0);}",
-                "void main(){}",
-                None,
-            ).unwrap(),
-            */
-            next_entity: 0,
-            components: HashMap::new(),
-        }
     }
 
     /// Tries to get the given components for a given entity.
@@ -120,6 +126,7 @@ impl World {
     /// # #[macro_use] extern crate frunk;
     /// # extern crate game;
     /// # #[macro_use] extern crate typemap;
+    /// # use game::World;
     /// # fn main() {
     /// #[derive(Debug, PartialEq)]
     /// struct FooComponent(&'static str);
@@ -133,7 +140,7 @@ impl World {
     /// struct BazComponent;
     /// impl typemap::Key for BazComponent { type Value = BazComponent; }
     ///
-    /// let mut world = game::World::example();
+    /// let mut world = World::default();
     /// let me = world.new_entity(hlist![FooComponent("hello"), BarComponent(42)]);
     ///
     /// assert_eq!(world.get(me), Some(hlist![&FooComponent("hello")]));
@@ -159,6 +166,7 @@ impl World {
     /// # #[macro_use] extern crate frunk;
     /// # extern crate game;
     /// # #[macro_use] extern crate typemap;
+    /// # use game::World;
     /// # fn main() {
     /// #[derive(Debug, PartialEq)]
     /// struct FooComponent(&'static str);
@@ -168,7 +176,7 @@ impl World {
     /// struct BarComponent(usize);
     /// impl typemap::Key for BarComponent { type Value = BarComponent; }
     ///
-    /// let mut world = game::World::example();
+    /// let mut world = World::default();
     /// let me = world.new_entity(hlist![FooComponent("hello")]);
     ///
     /// assert_eq!(world.get_mut(me), Some(&mut FooComponent("hello")));
@@ -192,6 +200,7 @@ impl World {
     /// # #[macro_use] extern crate frunk;
     /// # extern crate game;
     /// # #[macro_use] extern crate typemap;
+    /// # use game::World;
     /// # fn main() {
     /// #[derive(Debug)]
     /// struct FooComponent;
@@ -201,7 +210,7 @@ impl World {
     /// struct BarComponent(usize);
     /// impl typemap::Key for BarComponent { type Value = BarComponent; }
     ///
-    /// let mut world = game::World::example();
+    /// let mut world = World::default();
     /// world.new_entity(hlist![FooComponent]);
     /// world.new_entity(hlist![FooComponent, BarComponent(42)]);
     /// for (e, hlist_pat![foo, bar]) in world.iter() {
@@ -224,7 +233,7 @@ impl World {
     /// Creates a new entity with the given components.
     pub fn new_entity<C: ComponentHList>(&mut self, components: C) -> Entity {
         let entity = self.next_entity;
-        self.next_entity += 1;
+        self.next_entity.0 += 1;
         let mut map = ShareMap::custom();
         components.add_to_component_map(&mut map);
         self.components.insert(entity, map);
@@ -240,6 +249,7 @@ impl World {
     /// # extern crate game;
     /// # #[macro_use] extern crate typemap;
     /// # extern crate rayon;
+    /// # use game::World;
     /// # use rayon::iter::ParallelIterator;
     /// # fn main() {
     /// #[derive(Debug)]
@@ -250,7 +260,7 @@ impl World {
     /// struct BarComponent(usize);
     /// impl typemap::Key for BarComponent { type Value = BarComponent; }
     ///
-    /// let mut world = game::World::example();
+    /// let mut world = World::default();
     /// world.new_entity(hlist![FooComponent]);
     /// world.new_entity(hlist![FooComponent, BarComponent(42)]);
     /// world.par_iter().for_each(|(e, hlist_pat![foo, bar])| {

@@ -1,3 +1,4 @@
+extern crate cgmath;
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -13,6 +14,7 @@ extern crate rayon;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
+extern crate serde_json;
 extern crate typemap;
 
 #[macro_use]
@@ -25,14 +27,28 @@ mod state;
 
 pub use crate::{
     components::LocationComponent,
-    gui::{GuiSystem, Model, RenderComponent, Vertex},
+    gui::{GuiSystem, Model, RenderComponent, RenderData, Vertex},
     map::{Map, Tile},
     state::{State, World},
 };
 use frunk::{FuncMut, PolyMut};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 /// An entity.
-pub type Entity = usize;
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
+pub struct Entity(usize);
+
+impl Debug for Entity {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        write!(fmt, "Entity(n={:?})", self.0)
+    }
+}
+
+impl Display for Entity {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        write!(fmt, "{:?}", self)
+    }
+}
 
 /// The trait for a system.
 pub trait System {

@@ -1,16 +1,19 @@
 mod model;
+mod render;
 
-pub use crate::gui::model::{Model, Vertex};
-use crate::{State, System, World};
+pub use crate::gui::{
+    model::{Model, Vertex},
+    render::{RenderComponent, RenderData},
+};
+use crate::{State, System};
 use failure::{Fallible, SyncFailure};
 use glium::{
     backend::Facade,
     glutin::{
         Api, ContextBuilder, Event, EventsLoop, GlProfile, GlRequest, WindowBuilder, WindowEvent,
     },
-    Display, Program, Surface,
+    Display, Surface,
 };
-use std::sync::Arc;
 
 /// The GUI system.
 pub struct GuiSystem<T> {
@@ -28,7 +31,7 @@ impl<T> GuiSystem<T> {
 
 impl GuiSystem<()> {
     /// Sets up the GUI.
-    pub fn new() -> Fallible<GuiSystem<()>> {
+    pub fn new(grab_mouse: bool) -> Fallible<GuiSystem<()>> {
         let event_loop = EventsLoop::new();
         let window = WindowBuilder::new()
             .with_dimensions((800, 600).into())
@@ -39,7 +42,7 @@ impl GuiSystem<()> {
             .with_vsync(true);
         let display = Display::new(window, context, &event_loop).map_err(SyncFailure::new)?;
 
-        {
+        if grab_mouse {
             let window = display.gl_window();
             if let Err(err) = window.grab_cursor(true) {
                 error!("Couldn't grab cursor: {}", err);
@@ -57,18 +60,13 @@ impl GuiSystem<()> {
 
     /// Adds `RenderData` to a `GuiSystem`.
     pub fn add_render_data(self, data: RenderData) -> GuiSystem<RenderData> {
-        GuiSystem {
+        let mut system = GuiSystem {
             display: self.display,
             event_loop: self.event_loop,
             data,
-        }
-    }
-}
-
-impl GuiSystem<RenderData> {
-    /// Does the work of rendering a frame.
-    fn render(&mut self, world: &mut World, frame: &mut impl Surface) {
-        unimplemented!()
+        };
+        system.recompute_proj();
+        system
     }
 }
 
@@ -90,29 +88,21 @@ impl System for GuiSystem<RenderData> {
             _ => {}
         }
 
+        let mut recompute_proj = false;
         self.event_loop.poll_events(|event| match event {
+            Event::DeviceEvent { event, .. } => match event {
+                _ => trace!("Unhandled event {:#?}", event),
+            },
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *state = State::Close,
+                WindowEvent::Resized(_) => recompute_proj = true,
                 _ => trace!("Unhandled event {:#?}", event),
             },
             _ => trace!("Unhandled event {:#?}", event),
         });
+
+        if recompute_proj {
+            self.recompute_proj();
+        }
     }
 }
-
-/// The data required to render a world.
-pub struct RenderData {
-    /// The clear color.
-    pub clear_color: [f32; 4],
-
-    /// The GLSL program.
-    pub program: Program,
-}
-
-/// A graphical component.
-pub struct RenderComponent {
-    /// The model for the component.
-    pub model: Arc<Model>,
-}
-
-impl_Component!(RenderComponent);

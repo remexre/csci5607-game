@@ -1,6 +1,8 @@
 //! Miscellaneous utilities.
 
-use failure::{Error, Fail, Fallible, ResultExt};
+use failure::{Error, Fallible, ResultExt};
+use serde::Deserialize;
+use serde_json::from_reader;
 use std::{fs::File, io::Read, path::Path, str::FromStr};
 
 /// Quick `impl typemap::Key<Value = Self>`.
@@ -37,10 +39,11 @@ pub fn log_err(err: Error) {
 /// Reads a file and parses it.
 pub fn read_file(path: impl AsRef<Path>) -> Fallible<String> {
     let mut file = File::open(path.as_ref())
-        .with_context(|_| format_err!("Couldn't open {}", path.as_ref().display()))?;
+        .with_context(|err| format_err!("Couldn't open {}: {}", path.as_ref().display(), err))?;
     let mut buf = String::new();
-    file.read_to_string(&mut buf)
-        .with_context(|_| format_err!("Couldn't read from {}", path.as_ref().display()))?;
+    file.read_to_string(&mut buf).with_context(|err| {
+        format_err!("Couldn't read from {}: {}", path.as_ref().display(), err)
+    })?;
     drop(file);
     Ok(buf)
 }
@@ -54,9 +57,28 @@ where
 {
     match read_file(path.as_ref()).map_err(Error::from)?.parse() {
         Ok(data) => Ok(data),
-        Err(err) => Err(err
-            .into()
-            .context(format_err!("Couldn't parse {}", path.as_ref().display()))
-            .into()),
+        Err(err) => {
+            let err = err.into();
+            let ctx_err = format_err!("Couldn't parse {}: {}", path.as_ref().display(), err);
+            Err(err.context(ctx_err).into())
+        }
     }
+}
+
+/// Reads a file and parses it as JSON.
+pub fn read_file_and_unjson<P, T>(path: P) -> Fallible<T>
+where
+    P: AsRef<Path>,
+    T: for<'de> Deserialize<'de>,
+{
+    let file = File::open(path.as_ref())
+        .with_context(|err| format_err!("Couldn't open {}: {}", path.as_ref().display(), err))?;
+    let data = from_reader(file).with_context(|err| {
+        format_err!(
+            "Couldn't parse {} as JSON: {}",
+            path.as_ref().display(),
+            err
+        )
+    })?;
+    Ok(data)
 }
