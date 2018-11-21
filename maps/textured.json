@@ -1,0 +1,23 @@
+{
+  "dims": [
+    5,
+    5
+  ],
+  "floor": [
+    "e", "e",     "e",      "e", "e",
+    "w", "w",     "e",      "w", "e",
+    "e", "w", { "d": "A" }, "w", "e",
+    "e", "w",     "e",      "w", "w",
+    "e", "e",     "e",      "e", "e"
+  ],
+  "keys": [
+    [4, 4, "a"]
+  ],
+  "clear_color": [0.0, 0.0, 0.1, 1.0],
+  "material_floor": "floor.mtl",
+  "material_wall": "wall.mtl",
+  "model_character": null,
+  "model_key": "key.obj",
+  "shader_frag": "main.frag",
+  "shader_vert": "main.vert"
+}

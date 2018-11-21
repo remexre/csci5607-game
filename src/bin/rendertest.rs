@@ -22,7 +22,7 @@ fn main() {
     let options = Options::from_args();
     options.start_logger();
 
-    if let Err(err) = run(options) {
+    if let Err(err) = run() {
         log_err(err);
         exit(1);
     }
@@ -52,7 +52,7 @@ impl Options {
     }
 }
 
-fn run(options: Options) -> Fallible<()> {
+fn run() -> Fallible<()> {
     let gui = GuiSystem::new(false)
         .with_context(|err| format_err!("Failed to create GUI system: {}", err))?;
     let program = Program::from_source(
@@ -93,8 +93,7 @@ fn init_world(world: &mut World) {
                 (1.0, 0.0, 0.0),
                 None
             )),
-            scale: 1.0
         },
-        LocationComponent(0.0, 0.0, 3.0)
+        LocationComponent::pos(0.0, 0.0, 3.0)
     ]);
 }

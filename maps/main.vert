@@ -1,8 +1,8 @@
 #version 330 core
 
-// uniform mat4 model;
-// uniform mat4 view;
-// uniform mat4 proj;
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 proj;
 
 in vec3 xyz;
 in vec3 normal;
@@ -20,8 +20,8 @@ out vec3 lightDir;
 */
 
 void main() {
-	/*
    gl_Position = proj * view * model * vec4(xyz, 1.0);
+/*
    color = inColor;
 
    vec4 norm4 = transpose(inverse(view * model)) * vec4(normal, 0.0);
@@ -30,6 +30,6 @@ void main() {
    pos = (view * model * vec4(xyz, 1.0)).xyz;
    lightDir = (view * vec4(inLightDir, 0.0)).xyz;
    */
-   gl_Position = vec4(xyz, 1.0);
+   // gl_Position = vec4(xyz.xzy, 1.0);
    texcoords = uv;
 }

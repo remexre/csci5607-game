@@ -1,7 +1,7 @@
 use crate::{
     gui::RenderData,
     util::{read_file, read_file_and_parse_to, read_file_and_unjson},
-    Entity, LocationComponent, Map, Model, RenderComponent,
+    Entity, LocationComponent, Map, Material, Model, RenderComponent,
 };
 use failure::{Fallible, ResultExt};
 use frunk::hlist::{HCons, HNil};
@@ -47,27 +47,92 @@ impl World {
         facade: &impl Facade,
     ) -> Fallible<(RenderData, World)> {
         let base_path = base_path.as_ref();
+        let x = map.dims.0 as f32;
+        let z = map.dims.1 as f32;
 
         let mut world = World::default();
 
         // Add the floor.
+        let floor_material = match map.material_floor {
+            Some(path) => Some(Material::load_mtl(base_path.join(path))?),
+            None => None,
+        };
         let floor_model = Arc::new(Model::quad(
             (0.0, 0.0, 0.0),
-            (0.0, 0.0, map.dims.1 as f32),
-            (map.dims.0 as f32, 0.0, map.dims.1 as f32),
-            (map.dims.0 as f32, 0.0, 0.0),
-            None,
+            (0.0, 0.0, z),
+            (x, 0.0, z),
+            (x, 0.0, 0.0),
+            floor_material,
         ));
-        // TODO: map.material_floor
         world.new_entity(hlist![
-            RenderComponent {
-                model: floor_model.clone(),
-                scale: 1.0,
-            },
-            LocationComponent(0.0, 0.0, 0.0)
+            RenderComponent { model: floor_model },
+            LocationComponent::default()
         ]);
 
-        // TODO: map.material_wall
+        // Load the material.
+        let wall_material = match map.material_wall {
+            Some(path) => Some(Material::load_mtl(base_path.join(path))?),
+            None => None,
+        };
+
+        // Add the border walls.
+        let wall_x_model = Arc::new(Model::quad_no_stretch(
+            (0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (x, 1.0, 0.0),
+            (x, 0.0, 0.0),
+            wall_material.clone(),
+        ));
+        let wall_y_model = Arc::new(Model::quad_no_stretch(
+            (0.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 1.0, z),
+            (0.0, 0.0, z),
+            wall_material.clone(),
+        ));
+        world.new_entity(hlist![
+            RenderComponent {
+                model: wall_x_model.clone(),
+            },
+            LocationComponent {
+                xyz: [0.0, 0.0, 0.0],
+                rotation: [0.0, 180.0, 0.0],
+                scale: 1.0,
+            }
+        ]);
+        world.new_entity(hlist![
+            RenderComponent {
+                model: wall_y_model.clone(),
+            },
+            LocationComponent {
+                xyz: [0.0, 0.0, 0.0],
+                rotation: [0.0, 180.0, 0.0],
+                scale: 1.0,
+            }
+        ]);
+        world.new_entity(hlist![
+            RenderComponent {
+                model: wall_x_model,
+            },
+            LocationComponent {
+                xyz: [0.0, 0.0, z],
+                rotation: [0.0, 0.0, 0.0],
+                scale: 1.0,
+            }
+        ]);
+        world.new_entity(hlist![
+            RenderComponent {
+                model: wall_y_model,
+            },
+            LocationComponent {
+                xyz: [x, 0.0, 0.0],
+                rotation: [0.0, 0.0, 0.0],
+                scale: 1.0,
+            }
+        ]);
+
+        // Add the edge walls.
+
         // TODO: map.model_character
 
         // Load the keys.
@@ -76,9 +141,8 @@ impl World {
             world.new_entity(hlist![
                 RenderComponent {
                     model: key_model.clone(),
-                    scale: 1.0,
                 },
-                LocationComponent(x as f32 + 0.5, y as f32 + 0.5, 0.25)
+                LocationComponent::pos(x as f32 + 0.5, y as f32 + 0.5, 0.25)
             ]);
         }
 
@@ -228,6 +292,11 @@ impl World {
             .keys()
             .cloned()
             .filter_map(move |entity| self.get(entity).map(|cs| (entity, cs)))
+    }
+
+    /// Deletes an entity. Panics if the entity has already been deleted.
+    pub fn delete_entity(&mut self, entity: Entity) {
+        self.components.remove(&entity);
     }
 
     /// Creates a new entity with the given components.

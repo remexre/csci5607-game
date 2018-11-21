@@ -1,5 +1,6 @@
 #version 330 core
 
+uniform bool textured;
 uniform sampler2D tex;
 
 /*
@@ -29,5 +30,9 @@ void main() {
 
 	outColor = vec4(ambient + diffuse + specular, 1);
 	*/
-	outColor = texture(tex, texcoords);
+	if(textured) {
+		outColor = texture(tex, texcoords);
+	} else {
+		outColor = vec4(1.0);
+	}
 }

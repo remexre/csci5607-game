@@ -2,7 +2,7 @@ mod model;
 mod render;
 
 pub use crate::gui::{
-    model::{Model, Vertex},
+    model::{Material, Model, Vertex},
     render::{RenderComponent, RenderData},
 };
 use crate::{State, System};

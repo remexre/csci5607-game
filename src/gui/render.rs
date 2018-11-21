@@ -5,17 +5,16 @@ use crate::{GuiSystem, LocationComponent, Model, Vertex, World};
 use glium::{
     draw_parameters::DrawParameters,
     index::{NoIndices, PrimitiveType},
+    texture::RawImage2d,
+    uniforms::{Sampler, SamplerWrapFunction},
     Program, Surface, Texture2d, VertexBuffer,
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, ptr::null, rc::Rc, sync::Arc};
 
 /// A graphical component.
 pub struct RenderComponent {
     /// The model for the component.
     pub model: Arc<Model>,
-
-    /// The amount to scale by.
-    pub scale: f32,
 }
 
 impl_Component!(RenderComponent);
@@ -31,8 +30,11 @@ pub struct RenderData {
     /// The projection matrix.
     proj: Matrix4<f32>,
 
-    /// A map from models (by address) to Texture-VBO pairs.
-    textures_vbos: RefCell<HashMap<*const Model, Rc<(Texture2d, VertexBuffer<Vertex>)>>>,
+    /// A map from texture images (by address) to textures.
+    textures: RefCell<HashMap<*const RawImage2d<'static, u8>, Rc<Texture2d>>>,
+
+    /// A map from models (by address) to VBOs.
+    vbos: RefCell<HashMap<*const Model, Rc<VertexBuffer<Vertex>>>>,
 }
 
 impl RenderData {
@@ -42,7 +44,8 @@ impl RenderData {
             clear_color,
             program,
             proj: Matrix4::from_scale(0.0),
-            textures_vbos: RefCell::new(HashMap::new()),
+            textures: RefCell::new(HashMap::new()),
+            vbos: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -54,27 +57,25 @@ impl GuiSystem<RenderData> {
         let draw_params = DrawParameters::default();
 
         let view_mat = Matrix4::look_at(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(5.0, 5.0, 5.0),
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(5.0, 0.0, 5.0),
             Vector3::new(0.0, 1.0, 0.0),
         );
-        for (_entity, hlist_pat![render, pos]) in world.iter() {
+        for (_entity, hlist_pat![render, loc]) in world.iter() {
             let render: &RenderComponent = render;
-            let LocationComponent(x, y, z) = *pos;
+            let loc: LocationComponent = *loc;
 
-            let (texture, vbo) = &*self.get_vbo(&render.model);
-
-            let model_mat = Matrix4::from_translation(Vector3 { x, y, z })
-                // * rotation_matrix
-                * Matrix4::from_scale(render.scale);
+            let (texture, vbo) = self.get_texture_and_vbo(&render.model);
 
             let uniforms = uniform!{
-                model: Into::<[[f32; 4]; 4]>::into(model_mat),
+                model: Into::<[[f32; 4]; 4]>::into(loc.model()),
                 proj: Into::<[[f32; 4]; 4]>::into(self.data.proj),
+                tex: Sampler::new(&*texture).wrap_function(SamplerWrapFunction::Repeat),
+                textured: render.model.material.texture.is_some(),
                 view: Into::<[[f32; 4]; 4]>::into(view_mat),
             };
             frame
-                .draw(vbo, indices, &self.data.program, &uniforms, &draw_params)
+                .draw(&*vbo, indices, &self.data.program, &uniforms, &draw_params)
                 .unwrap()
         }
     }
@@ -85,33 +86,58 @@ impl GuiSystem<RenderData> {
 
         let size = self.display.gl_window().get_inner_size().unwrap();
         self.data.proj = Matrix4::from(PerspectiveFov {
-            fovy: Deg(70.0).into(),
+            fovy: Deg(59.0).into(),
             aspect: (size.width / size.height) as _,
             near: 0.1,
-            far: 5.0,
+            far: 100.0,
         });
     }
 
-    fn get_vbo(&self, model: &Model) -> Rc<(Texture2d, VertexBuffer<Vertex>)> {
+    fn get_texture_and_vbo(&self, model: &Model) -> (Rc<Texture2d>, Rc<VertexBuffer<Vertex>>) {
         let model_ptr = model as _;
-        if !self.data.textures_vbos.borrow().contains_key(&model_ptr) {
-            let texture = if let Some(texture) = model.texture.as_ref() {
-                // Texture2d::new(&self.display, texture)
-                unimplemented!();
-            } else {
-                Texture2d::new(&self.display, vec![vec![(1.0, 0.0, 1.0, 0.0)]])
-            }.unwrap();
+        if !self.data.vbos.borrow().contains_key(&model_ptr) {
             let vbo = VertexBuffer::new(&self.display, &model.vertices).unwrap();
-            self.data
-                .textures_vbos
-                .borrow_mut()
-                .insert(model_ptr, Rc::new((texture, vbo)));
+            self.data.vbos.borrow_mut().insert(model_ptr, Rc::new(vbo));
         }
-        self.data
-            .textures_vbos
-            .borrow()
-            .get(&model_ptr)
-            .unwrap()
-            .clone()
+        let vbo = self.data.vbos.borrow().get(&model_ptr).unwrap().clone();
+
+        let texture = if let Some(ref texture) = model.material.texture {
+            let texture: &RawImage2d<u8> = &*texture;
+            let texture_ptr = texture as _;
+            if self.data.textures.borrow().contains_key(&texture_ptr) {
+                self.data
+                    .textures
+                    .borrow()
+                    .get(&texture_ptr)
+                    .unwrap()
+                    .clone()
+            } else {
+                // TODO: The fact that this is necessary feels bug-report-worthy...
+                let texture_clone = RawImage2d {
+                    data: texture.data.clone(),
+                    format: texture.format,
+                    height: texture.height,
+                    width: texture.width,
+                };
+                let texture = Rc::new(Texture2d::new(&self.display, texture_clone).unwrap());
+                self.data
+                    .textures
+                    .borrow_mut()
+                    .insert(texture_ptr, texture.clone());
+                texture
+            }
+        } else if self.data.textures.borrow().contains_key(&null()) {
+            self.data.textures.borrow().get(&null()).unwrap().clone()
+        } else {
+            let texture =
+                Rc::new(Texture2d::new(&self.display, vec![vec![(1.0, 0.0, 1.0, 0.0)]]).unwrap());
+            self.data
+                .textures
+                .borrow_mut()
+                .insert(null(), texture.clone());
+            texture
+        };
+
+        (texture, vbo)
     }
 }
