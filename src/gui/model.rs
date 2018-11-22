@@ -2,10 +2,9 @@ use cgmath::{InnerSpace, Vector3};
 use failure::{Fallible, ResultExt};
 use glium::texture::RawImage2d;
 use image;
-use obj::{Material as MtlMaterial, Mtl, Obj, SimplePolygon};
+use obj::{Material as MtlMaterial, Mtl};
 use std::{
     collections::HashMap,
-    fmt::Write,
     fs::{canonicalize, File},
     io::BufReader,
     path::{Path, PathBuf},
@@ -61,33 +60,6 @@ pub struct Model {
 }
 
 impl Model {
-    /// Fully loads an `.obj` to a Model.
-    pub fn load_obj(path: impl AsRef<Path>) -> Fallible<Arc<Model>> {
-        let mut cache = MODEL_CACHE.lock().unwrap();
-
-        let path = canonicalize(path)?;
-        if let Some(model) = cache.get(&path).and_then(Weak::upgrade) {
-            debug!("Cache hit for {}!", path.display());
-            return Ok(model);
-        }
-
-        let model = {
-            let mut obj = Obj::load(&path)
-                .with_context(|err| format_err!("When loading {}: {}", path.display(), err))?;
-            if let Err(errs) = obj.load_mtls() {
-                let mut msg = "Errors while loading MTLs:".to_string();
-                for (file, err) in errs {
-                    write!(msg, "\n{}: {}", file, err);
-                }
-                bail!("{}", msg);
-            }
-            Arc::new(Model::from(obj))
-        };
-
-        cache.insert(path, Arc::downgrade(&model));
-        Ok(model)
-    }
-
     /// Creates a model for a quad with the given vertices.
     pub fn quad(
         v1: (f32, f32, f32),
@@ -150,14 +122,56 @@ impl Model {
             vertices: vec![v1, v2, v3, v3, v4, v1],
         }
     }
-}
 
-impl<'a> From<Obj<'a, SimplePolygon>> for Model {
-    fn from(obj: Obj<'a, SimplePolygon>) -> Model {
-        warn!("TODO Model::from Obj");
+    /// Creates a unit cube with the given texture.
+    pub fn cube(material: Option<Arc<Material>>) -> Model {
+        let p1 = Vector3::new(-0.5, -0.5, -0.5);
+        let p2 = Vector3::new(0.5, -0.5, -0.5);
+        let p3 = Vector3::new(-0.5, 0.5, -0.5);
+        let p4 = Vector3::new(0.5, 0.5, -0.5);
+        let p5 = Vector3::new(-0.5, -0.5, 0.5);
+        let p6 = Vector3::new(0.5, -0.5, 0.5);
+        let p7 = Vector3::new(-0.5, 0.5, 0.5);
+        let p8 = Vector3::new(0.5, 0.5, 0.5);
+
+        let right = Vector3::new(1.0, 0.0, 0.0);
+        let left = Vector3::new(-1.0, 0.0, 0.0);
+        let up = Vector3::new(0.0, 1.0, 0.0);
+        let down = Vector3::new(0.0, -1.0, 0.0);
+        let forwards = Vector3::new(0.0, 0.0, 1.0);
+        let backwards = Vector3::new(0.0, 0.0, -1.0);
+
+        let v01 = Vertex::new(p1, backwards, [0.0, 0.0]);
+        let v02 = Vertex::new(p3, backwards, [0.0, 1.0]);
+        let v03 = Vertex::new(p4, backwards, [1.0, 1.0]);
+        let v04 = Vertex::new(p2, backwards, [1.0, 0.0]);
+        let v05 = Vertex::new(p2, right, [0.0, 0.0]);
+        let v06 = Vertex::new(p4, right, [0.0, 1.0]);
+        let v07 = Vertex::new(p8, right, [1.0, 1.0]);
+        let v08 = Vertex::new(p6, right, [1.0, 0.0]);
+        let v09 = Vertex::new(p6, forwards, [0.0, 0.0]);
+        let v10 = Vertex::new(p8, forwards, [0.0, 1.0]);
+        let v11 = Vertex::new(p7, forwards, [1.0, 1.0]);
+        let v12 = Vertex::new(p5, forwards, [1.0, 0.0]);
+        let v13 = Vertex::new(p5, left, [0.0, 0.0]);
+        let v14 = Vertex::new(p7, left, [0.0, 1.0]);
+        let v15 = Vertex::new(p3, left, [1.0, 1.0]);
+        let v16 = Vertex::new(p1, left, [1.0, 0.0]);
+        let v17 = Vertex::new(p3, up, [0.0, 0.0]);
+        let v18 = Vertex::new(p7, up, [0.0, 1.0]);
+        let v19 = Vertex::new(p8, up, [1.0, 1.0]);
+        let v20 = Vertex::new(p4, up, [1.0, 0.0]);
+        let v21 = Vertex::new(p5, down, [0.0, 0.0]);
+        let v22 = Vertex::new(p1, down, [0.0, 1.0]);
+        let v23 = Vertex::new(p2, down, [1.0, 1.0]);
+        let v24 = Vertex::new(p6, down, [1.0, 0.0]);
         Model {
-            material: DEFAULT_MATERIAL.clone(),
-            vertices: Vec::new(),
+            material: material.unwrap_or_else(|| DEFAULT_MATERIAL.clone()),
+            vertices: vec![
+                v01, v02, v03, v03, v04, v01, v05, v06, v07, v07, v08, v05, v09, v10, v11, v11,
+                v12, v09, v13, v14, v15, v15, v16, v13, v17, v18, v19, v19, v20, v17, v21, v22,
+                v23, v23, v24, v21,
+            ],
         }
     }
 }
@@ -165,10 +179,10 @@ impl<'a> From<Obj<'a, SimplePolygon>> for Model {
 /// The material associated with the model.
 pub struct Material {
     /// The ambient color.
-    pub ambient: [f32; 4],
+    pub ambient: [f32; 3],
 
     /// The diffuse color.
-    pub diffuse: [f32; 4],
+    pub diffuse: [f32; 3],
 
     /// The texture, if any.
     pub texture: Option<Arc<RawImage2d<'static, u8>>>,
@@ -179,7 +193,6 @@ impl Material {
     /// transparency).
     pub fn flat(color: impl Into<[f32; 3]>) -> Material {
         let color = color.into();
-        let color = [color[0], color[1], color[2], 1.0];
         Material {
             ambient: color,
             diffuse: color,
@@ -192,7 +205,8 @@ impl Material {
         let path = path.as_ref();
         let mut cache = MATERIAL_CACHE.lock().unwrap();
 
-        let path = canonicalize(path)?;
+        let path = canonicalize(path)
+            .with_context(|err| format_err!("While canonicalizing {}: {}", path.display(), err))?;
         if let Some(material) = cache.get(&path).and_then(Weak::upgrade) {
             debug!("Cache hit for {}!", path.display());
             return Ok(material);
@@ -208,11 +222,9 @@ impl Material {
             _ => bail!("Too many materials found in {}", path.display()),
         };
 
-        let color = |o: Option<[f32; 3]>| o.map(|[r, g, b]| [r, g, b, 1.0]).unwrap_or_default();
-
         let mtl = Arc::new(Material {
-            ambient: color(mtl.ka),
-            diffuse: color(mtl.kd),
+            ambient: mtl.ka.unwrap_or_default(),
+            diffuse: mtl.kd.unwrap_or_default(),
             texture: match mtl.map_kd.as_ref() {
                 Some(tex_path) => Some(load_texture(&path, tex_path)?),
                 None => None,
@@ -234,7 +246,8 @@ fn load_texture(
         .parent()
         .map(|p| p.join(tex_path.as_ref()))
         .unwrap_or_else(|| tex_path.as_ref().to_owned());
-    let path = canonicalize(path)?;
+    let path = canonicalize(&path)
+        .with_context(|err| format_err!("While canonicalizing {}: {}", path.display(), err))?;
     if let Some(texture) = cache.get(&path).and_then(Weak::upgrade) {
         debug!("Cache hit for {}!", path.display());
         return Ok(texture);

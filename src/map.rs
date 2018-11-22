@@ -8,7 +8,13 @@ pub struct Map {
     pub dims: (usize, usize),
 
     /// The actual floor layout.
-    pub floor: Vec<Tile>,
+    pub tiles: Vec<Tile>,
+
+    /// The start location.
+    pub start: (usize, usize),
+
+    /// The goal location.
+    pub goal: (usize, usize),
 
     /// The location of keys.
     pub keys: Vec<(usize, usize, char)>,
@@ -16,17 +22,14 @@ pub struct Map {
     /// The color to clear with.
     pub clear_color: [f32; 4],
 
+    /// The colors of the doors.
+    pub door_colors: [[f32; 3]; 5],
+
     /// The filename of the material used for the floor.
     pub material_floor: Option<PathBuf>,
 
     /// The filename of the material used for walls.
     pub material_wall: Option<PathBuf>,
-
-    /// The filename of the character model.
-    pub model_character: Option<PathBuf>,
-
-    /// The filename of the key model.
-    pub model_key: PathBuf,
 
     /// The filename of the fragment shader.
     pub shader_frag: PathBuf,
@@ -46,14 +49,21 @@ impl FromStr for Map {
         let h = &s[w_end_idx + 1..h_end_idx];
         let mut map = Map {
             dims: (w.parse()?, h.parse()?),
-            floor: Vec::new(),
+            tiles: Vec::new(),
+            start: (0, 0),
+            goal: (0, 0),
             keys: Vec::new(),
 
             clear_color: [0.0; 4],
+            door_colors: [
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0],
+            ],
             material_floor: None,
             material_wall: None,
-            model_character: None,
-            model_key: PathBuf::from("key.obj"),
             shader_frag: PathBuf::from("main.frag"),
             shader_vert: PathBuf::from("main.vert"),
         };
@@ -61,7 +71,7 @@ impl FromStr for Map {
         let mut rest = &s[h_end_idx + 1..];
         let mut x = 0;
         let mut y = 0;
-        while map.floor.len() != map.dims.0 * map.dims.1 {
+        while map.tiles.len() != map.dims.0 * map.dims.1 {
             let ch = rest
                 .chars()
                 .next()
@@ -85,7 +95,7 @@ impl FromStr for Map {
 }
 
 /// The floor map tile.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Tile {
     /// An empty floor tile.
     #[serde(rename = "e")]
@@ -102,7 +112,15 @@ pub enum Tile {
 
 fn parse_tile(map: &mut Map, ch: char, x: usize, y: usize) -> Fallible<()> {
     let tile = match ch {
-        '0' | 'G' | 'S' => Tile::Empty,
+        '0' => Tile::Empty,
+        'G' => {
+            map.goal = (x, y);
+            Tile::Empty
+        }
+        'S' => {
+            map.start = (x, y);
+            Tile::Empty
+        }
         'A'...'E' => Tile::Door(ch),
         'a'...'e' => {
             map.keys.push((x, y, ch));
@@ -112,6 +130,6 @@ fn parse_tile(map: &mut Map, ch: char, x: usize, y: usize) -> Fallible<()> {
         '\n' | '\r' | '\t' | ' ' => return Ok(()),
         _ => bail!("Invalid tile {:?}", ch),
     };
-    map.floor.push(tile);
+    map.tiles.push(tile);
     Ok(())
 }

@@ -1,7 +1,11 @@
 use crate::{
+    components::{
+        CameraComponent, CollisionComponent, DoorComponent, KeyComponent, LocationComponent,
+        RenderComponent,
+    },
     gui::RenderData,
     util::{read_file, read_file_and_parse_to, read_file_and_unjson},
-    Entity, LocationComponent, Map, Material, Model, RenderComponent,
+    Entity, Map, Material, Model, Tile,
 };
 use failure::{Fallible, ResultExt};
 use frunk::hlist::{HCons, HNil};
@@ -35,7 +39,7 @@ impl State {
 /// The state of the game world during gameplay.
 #[derive(Default)]
 pub struct World {
-    next_entity: Entity,
+    next_entity: usize,
     components: HashMap<Entity, ShareMap>,
 }
 
@@ -47,10 +51,23 @@ impl World {
         facade: &impl Facade,
     ) -> Fallible<(RenderData, World)> {
         let base_path = base_path.as_ref();
-        let x = map.dims.0 as f32;
-        let z = map.dims.1 as f32;
+        let x_max = map.dims.0 as f32;
+        let z_max = map.dims.1 as f32;
 
         let mut world = World::default();
+
+        // Add the player.
+        world.new_entity(
+            "player",
+            hlist![
+                CameraComponent,
+                LocationComponent {
+                    xyz: [map.start.0 as f32 + 0.5, 0.5, map.start.1 as f32 + 0.5],
+                    rotation: [0.0; 3],
+                    scale: 0.25,
+                }
+            ],
+        );
 
         // Add the floor.
         let floor_material = match map.material_floor {
@@ -59,15 +76,18 @@ impl World {
         };
         let floor_model = Arc::new(Model::quad(
             (0.0, 0.0, 0.0),
-            (0.0, 0.0, z),
-            (x, 0.0, z),
-            (x, 0.0, 0.0),
+            (0.0, 0.0, z_max),
+            (x_max, 0.0, z_max),
+            (x_max, 0.0, 0.0),
             floor_material,
         ));
-        world.new_entity(hlist![
-            RenderComponent { model: floor_model },
-            LocationComponent::default()
-        ]);
+        world.new_entity(
+            "floor",
+            hlist![
+                RenderComponent { model: floor_model },
+                LocationComponent::default(),
+            ],
+        );
 
         // Load the material.
         let wall_material = match map.material_wall {
@@ -79,71 +99,108 @@ impl World {
         let wall_x_model = Arc::new(Model::quad_no_stretch(
             (0.0, 0.0, 0.0),
             (0.0, 1.0, 0.0),
-            (x, 1.0, 0.0),
-            (x, 0.0, 0.0),
+            (x_max, 1.0, 0.0),
+            (x_max, 0.0, 0.0),
             wall_material.clone(),
         ));
         let wall_y_model = Arc::new(Model::quad_no_stretch(
             (0.0, 0.0, 0.0),
             (0.0, 1.0, 0.0),
-            (0.0, 1.0, z),
-            (0.0, 0.0, z),
+            (0.0, 1.0, z_max),
+            (0.0, 0.0, z_max),
             wall_material.clone(),
         ));
-        world.new_entity(hlist![
-            RenderComponent {
-                model: wall_x_model.clone(),
-            },
-            LocationComponent {
-                xyz: [0.0, 0.0, 0.0],
-                rotation: [0.0, 180.0, 0.0],
-                scale: 1.0,
-            }
-        ]);
-        world.new_entity(hlist![
-            RenderComponent {
-                model: wall_y_model.clone(),
-            },
-            LocationComponent {
-                xyz: [0.0, 0.0, 0.0],
-                rotation: [0.0, 180.0, 0.0],
-                scale: 1.0,
-            }
-        ]);
-        world.new_entity(hlist![
-            RenderComponent {
-                model: wall_x_model,
-            },
-            LocationComponent {
-                xyz: [0.0, 0.0, z],
-                rotation: [0.0, 0.0, 0.0],
-                scale: 1.0,
-            }
-        ]);
-        world.new_entity(hlist![
-            RenderComponent {
-                model: wall_y_model,
-            },
-            LocationComponent {
-                xyz: [x, 0.0, 0.0],
-                rotation: [0.0, 0.0, 0.0],
-                scale: 1.0,
-            }
-        ]);
+        world.new_entity(
+            "wallx0",
+            hlist![
+                RenderComponent {
+                    model: wall_x_model.clone(),
+                },
+                LocationComponent::pos(0.0, 0.0, 0.0),
+            ],
+        );
+        world.new_entity(
+            "wally0",
+            hlist![
+                RenderComponent {
+                    model: wall_y_model.clone(),
+                },
+                LocationComponent::pos(0.0, 0.0, 0.0),
+            ],
+        );
+        world.new_entity(
+            "wallx1",
+            hlist![
+                RenderComponent {
+                    model: wall_x_model,
+                },
+                LocationComponent::pos(0.0, 0.0, z_max),
+            ],
+        );
+        world.new_entity(
+            "wally1",
+            hlist![
+                RenderComponent {
+                    model: wall_y_model,
+                },
+                LocationComponent::pos(x_max, 0.0, 0.0),
+            ],
+        );
 
-        // Add the edge walls.
-
-        // TODO: map.model_character
+        // Add the tile walls and doors.
+        let wall_model = Arc::new(Model::cube(wall_material));
+        for x in 0..map.dims.0 {
+            for y in 0..map.dims.1 {
+                match map.tiles[x + y * map.dims.0] {
+                    Tile::Empty => {}
+                    Tile::Wall => {
+                        world.new_entity(
+                            "wall",
+                            hlist![
+                                RenderComponent {
+                                    model: wall_model.clone(),
+                                },
+                                LocationComponent::pos(x as f32 + 0.5, 0.5, y as f32 + 0.5),
+                                CollisionComponent(true),
+                            ],
+                        );
+                    }
+                    Tile::Door(key) => {
+                        let material = Arc::new(Material::flat(map.door_colors[key as usize - 65]));
+                        let model = Arc::new(Model::cube(Some(material)));
+                        world.new_entity(
+                            "door",
+                            hlist![
+                                RenderComponent { model },
+                                LocationComponent::pos(x as f32 + 0.5, 0.5, y as f32 + 0.5),
+                                CollisionComponent(true),
+                                DoorComponent(key),
+                            ],
+                        );
+                    }
+                }
+            }
+        }
 
         // Load the keys.
-        let key_model = Model::load_obj(base_path.join(&map.model_key))?;
         for (x, y, ch) in map.keys {
-            world.new_entity(hlist![
-                RenderComponent {
-                    model: key_model.clone(),
-                },
-                LocationComponent::pos(x as f32 + 0.5, y as f32 + 0.5, 0.25)
-            ]);
+            let material = Arc::new(Material::flat(map.door_colors[ch as usize - 97]));
+            let model = Arc::new(Model::cube(Some(material)));
+            world.new_entity(
+                "key",
+                hlist![
+                    RenderComponent { model },
+                    LocationComponent {
+                        xyz: [x as f32 + 0.5, 0.25, y as f32 + 0.5],
+                        rotation: [0.0; 3],
+                        scale: 0.25,
+                    },
+                    KeyComponent {
+                        letter: ch,
+                        held: false,
+                    }
+                ],
+            );
         }
 
         let render_data = RenderData::new(
@@ -205,7 +262,7 @@ impl World {
     /// impl typemap::Key for BazComponent { type Value = BazComponent; }
     ///
     /// let mut world = World::default();
-    /// let me = world.new_entity(hlist![FooComponent("hello"), BarComponent(42)]);
+    /// let me = world.new_entity("h42", hlist![FooComponent("hello"), BarComponent(42)]);
     ///
     /// assert_eq!(world.get(me), Some(hlist![&FooComponent("hello")]));
     /// assert_eq!(world.get(me), Some(hlist![&BarComponent(42)]));
@@ -241,7 +298,7 @@ impl World {
     /// impl typemap::Key for BarComponent { type Value = BarComponent; }
     ///
     /// let mut world = World::default();
-    /// let me = world.new_entity(hlist![FooComponent("hello")]);
+    /// let me = world.new_entity("h", hlist![FooComponent("hello")]);
     ///
     /// assert_eq!(world.get_mut(me), Some(&mut FooComponent("hello")));
     /// assert_eq!(world.get_mut::<BarComponent>(me), None);
@@ -254,6 +311,14 @@ impl World {
         self.components
             .get_mut(&entity)
             .and_then(ShareMap::get_mut::<T>)
+    }
+
+    /// Tries to get a single component for a given entity.
+    pub fn get_one<T>(&self, entity: Entity) -> Option<&T>
+    where
+        T: Key<Value = T> + Send + Sync,
+    {
+        self.components.get(&entity).and_then(ShareMap::get::<T>)
     }
 
     /// Iterates over entities which have all the given components.
@@ -275,8 +340,8 @@ impl World {
     /// impl typemap::Key for BarComponent { type Value = BarComponent; }
     ///
     /// let mut world = World::default();
-    /// world.new_entity(hlist![FooComponent]);
-    /// world.new_entity(hlist![FooComponent, BarComponent(42)]);
+    /// world.new_entity("foo", hlist![FooComponent]);
+    /// world.new_entity("foobar", hlist![FooComponent, BarComponent(42)]);
     /// for (e, hlist_pat![foo, bar]) in world.iter() {
     ///     println!("Entity: {:?}", e);
     ///     println!("Foo: {:?}", foo as &FooComponent);
@@ -300,9 +365,9 @@ impl World {
     }
 
     /// Creates a new entity with the given components.
-    pub fn new_entity<C: ComponentHList>(&mut self, components: C) -> Entity {
-        let entity = self.next_entity;
-        self.next_entity.0 += 1;
+    pub fn new_entity<C: ComponentHList>(&mut self, name: &str, components: C) -> Entity {
+        let entity = Entity(format!("{}:{}", self.next_entity, name).into());
+        self.next_entity += 1;
         let mut map = ShareMap::custom();
         components.add_to_component_map(&mut map);
         self.components.insert(entity, map);
@@ -330,8 +395,8 @@ impl World {
     /// impl typemap::Key for BarComponent { type Value = BarComponent; }
     ///
     /// let mut world = World::default();
-    /// world.new_entity(hlist![FooComponent]);
-    /// world.new_entity(hlist![FooComponent, BarComponent(42)]);
+    /// world.new_entity("foo", hlist![FooComponent]);
+    /// world.new_entity("foobar", hlist![FooComponent, BarComponent(42)]);
     /// world.par_iter().for_each(|(e, hlist_pat![foo, bar])| {
     ///     println!("Entity: {:?}", e);
     ///     println!("Foo: {:?}", foo as &FooComponent);

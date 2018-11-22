@@ -9,7 +9,11 @@ extern crate stderrlog;
 extern crate structopt;
 
 use failure::{Fallible, ResultExt};
-use game::{util::log_err, GuiSystem, State, SystemStepper, World};
+use game::{
+    systems::{GuiSystem, SinkingDoorSystem, SpinningKeySystem, TheFloorIsLavaSystem},
+    util::log_err,
+    State, SystemStepper, World,
+};
 use std::{path::PathBuf, process::exit, time::Instant};
 use structopt::StructOpt;
 
@@ -56,23 +60,28 @@ impl Options {
 }
 
 fn run(options: Options) -> Fallible<()> {
-    let gui = GuiSystem::new(!options.no_grab_mouse)
+    let (controls, gui) = GuiSystem::new(!options.no_grab_mouse)
         .with_context(|err| format_err!("Failed to create GUI system: {}", err))?;
 
     let (render_data, world) = World::from_map_file(options.map_path, gui.facade())?;
     let mut state = State::Playing(world);
 
-    let mut systems = hlist![gui.add_render_data(render_data)];
+    let mut systems = hlist![
+        controls,
+        gui.add_render_data(render_data),
+        SinkingDoorSystem,
+        SpinningKeySystem,
+        TheFloorIsLavaSystem
+    ];
     let mut last = Instant::now();
     while !state.should_close() {
         let dt = last.elapsed();
+        last = Instant::now();
         let dt = dt.subsec_millis() as u64 + 1_000_000 * dt.as_secs();
 
         systems
             .to_mut()
             .map(SystemStepper::with_args(&mut state, dt));
-
-        last = Instant::now();
     }
 
     Ok(())

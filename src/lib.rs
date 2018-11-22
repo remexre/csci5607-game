@@ -16,32 +16,35 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate smallvec;
+extern crate symbol;
 extern crate typemap;
 
 #[macro_use]
 pub mod util;
 
-mod components;
+pub mod components;
 mod gui;
 mod map;
 mod state;
+pub mod systems;
 
 pub use crate::{
-    components::LocationComponent,
-    gui::{GuiSystem, Material, Model, RenderComponent, RenderData, Vertex},
+    gui::{Material, Model, RenderData, Vertex},
     map::{Map, Tile},
     state::{State, World},
 };
 use frunk::{FuncMut, PolyMut};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use symbol::Symbol;
 
 /// An entity.
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
-pub struct Entity(usize);
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+pub struct Entity(Symbol);
 
 impl Debug for Entity {
     fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        write!(fmt, "Entity(n={:?})", self.0)
+        write!(fmt, "Entity({:?})", self.0)
     }
 }
 

@@ -2,37 +2,29 @@
 
 uniform bool textured;
 uniform sampler2D tex;
+uniform vec3 ambient;
+uniform vec3 diffuse;
 
-/*
-in vec3 color;
 in vec3 adjNormal;
-in vec3 pos;
 in vec3 lightDir;
-*/
 in vec2 texcoords;
 
 out vec4 outColor;
 
-const float ambient = 0.0;
 
 void main() {
-	/*
-	vec3 ambient = color * ambient;
+	vec3 ambientC;
+	vec3 diffuseC;
 
-	vec3 diffuse = color * max(dot(-lightDir, adjNormal), 0.0);
-
-	vec3 viewDir = normalize(-pos);
-	vec3 reflectDir = reflect(viewDir, adjNormal);
-	float spec = max(dot(reflectDir, lightDir), 0.0);
-	if(dot(-lightDir, adjNormal) <= 0.0)
-		spec = 0.0;
-	vec3 specular = vec3(0.8) * pow(spec, 4);
-
-	outColor = vec4(ambient + diffuse + specular, 1);
-	*/
 	if(textured) {
-		outColor = texture(tex, texcoords);
+		ambientC = diffuseC = texture(tex, texcoords).rgb;
 	} else {
-		outColor = vec4(1.0);
+		ambientC = ambient;
+		diffuseC = diffuse;
 	}
+
+	ambientC *= 0.1;
+	diffuseC *= max(dot(-lightDir, adjNormal), 0.0);
+
+	outColor = vec4(ambientC + diffuseC, 1.0);
 }

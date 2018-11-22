@@ -1,9 +1,13 @@
 //! The actual rendering code.
 
-use cgmath::{Deg, Matrix4, Point3, Vector3};
-use crate::{GuiSystem, LocationComponent, Model, Vertex, World};
+use cgmath::{Deg, Matrix4};
+use crate::{
+    components::{CameraComponent, LocationComponent},
+    systems::GuiSystem,
+    Model, Vertex, World,
+};
 use glium::{
-    draw_parameters::DrawParameters,
+    glutin::dpi::LogicalSize,
     index::{NoIndices, PrimitiveType},
     texture::RawImage2d,
     uniforms::{Sampler, SamplerWrapFunction},
@@ -27,6 +31,9 @@ pub struct RenderData {
     /// The GLSL program.
     pub program: Program,
 
+    /// The dimensions of the window.
+    pub(super) dims: LogicalSize,
+
     /// The projection matrix.
     proj: Matrix4<f32>,
 
@@ -43,6 +50,7 @@ impl RenderData {
         RenderData {
             clear_color,
             program,
+            dims: LogicalSize::new(0.0, 0.0),
             proj: Matrix4::from_scale(0.0),
             textures: RefCell::new(HashMap::new()),
             vbos: RefCell::new(HashMap::new()),
@@ -54,13 +62,16 @@ impl GuiSystem<RenderData> {
     /// Does the work of rendering a frame.
     pub(super) fn render(&mut self, world: &mut World, frame: &mut impl Surface) {
         let indices = NoIndices(PrimitiveType::TrianglesList);
-        let draw_params = DrawParameters::default();
 
-        let view_mat = Matrix4::look_at(
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(5.0, 0.0, 5.0),
-            Vector3::new(0.0, 1.0, 0.0),
-        );
+        let view_mat = match world.iter().next() {
+            Some((_, hlist_pat![camera, loc])) => {
+                let _: &CameraComponent = camera;
+                let loc: &LocationComponent = loc;
+                loc.view()
+            }
+            None => return,
+        };
+
         for (_entity, hlist_pat![render, loc]) in world.iter() {
             let render: &RenderComponent = render;
             let loc: LocationComponent = *loc;
@@ -68,6 +79,8 @@ impl GuiSystem<RenderData> {
             let (texture, vbo) = self.get_texture_and_vbo(&render.model);
 
             let uniforms = uniform!{
+                ambient: render.model.material.ambient,
+                diffuse: render.model.material.diffuse,
                 model: Into::<[[f32; 4]; 4]>::into(loc.model()),
                 proj: Into::<[[f32; 4]; 4]>::into(self.data.proj),
                 tex: Sampler::new(&*texture).wrap_function(SamplerWrapFunction::Repeat),
@@ -75,7 +88,7 @@ impl GuiSystem<RenderData> {
                 view: Into::<[[f32; 4]; 4]>::into(view_mat),
             };
             frame
-                .draw(&*vbo, indices, &self.data.program, &uniforms, &draw_params)
+                .draw(&*vbo, indices, &self.data.program, &uniforms, &self.params)
                 .unwrap()
         }
     }
@@ -85,6 +98,7 @@ impl GuiSystem<RenderData> {
         use cgmath::PerspectiveFov;
 
         let size = self.display.gl_window().get_inner_size().unwrap();
+        self.data.dims = size;
         self.data.proj = Matrix4::from(PerspectiveFov {
             fovy: Deg(59.0).into(),
             aspect: (size.width / size.height) as _,
