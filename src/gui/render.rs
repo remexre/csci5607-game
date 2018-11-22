@@ -108,7 +108,7 @@ impl GuiSystem<RenderData> {
         self.data.proj = Matrix4::from(PerspectiveFov {
             fovy: Deg(59.0).into(),
             aspect: (size.width / size.height) as _,
-            near: 0.1,
+            near: 0.01,
             far: 100.0,
         });
     }

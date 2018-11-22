@@ -1,3 +1,4 @@
+use cgmath::{Point3, Vector3};
 use crate::{
     components::{
         CameraComponent, CollisionComponent, DoorComponent, KeyComponent, LocationComponent,
@@ -62,9 +63,9 @@ impl World {
             hlist![
                 CameraComponent,
                 LocationComponent {
-                    xyz: [map.start.0 as f32 + 0.5, 0.25, map.start.1 as f32 + 0.5],
-                    rotation: [0.0; 3],
-                    scale: 0.1,
+                    xyz: Point3::new(map.start.0 as f32 + 0.5, 0.25, map.start.1 as f32 + 0.5),
+                    rotation: Vector3::new(0.0, 0.0, 0.0),
+                    scale: 0.2,
                 }
             ],
         );
@@ -178,15 +179,19 @@ impl World {
 
         // Load the keys.
         for (x, y, ch) in map.keys {
-            let material = Arc::new(Material::flat(map.door_colors[ch as usize - 97]));
+            let mut color = map.door_colors[ch as usize - 97];
+            for i in 0..3 {
+                color[i] = 1.0 - color[i];
+            }
+            let material = Arc::new(Material::flat(color));
             let model = Arc::new(Model::cube(Some(material)));
             world.new_entity(
                 "key",
                 hlist![
                     RenderComponent { model },
                     LocationComponent {
-                        xyz: [x as f32 + 0.5, 0.1, y as f32 + 0.5],
-                        rotation: [0.0; 3],
+                        xyz: Point3::new(x as f32 + 0.5, 0.1, y as f32 + 0.5),
+                        rotation: Vector3::new(0.0, 0.0, 0.0),
                         scale: 0.1,
                     },
                     KeyComponent {

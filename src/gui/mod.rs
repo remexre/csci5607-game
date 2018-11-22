@@ -11,7 +11,7 @@ use crate::{State, System};
 use failure::{Fallible, SyncFailure};
 use glium::{
     backend::Facade,
-    draw_parameters::{DepthTest, DrawParameters},
+    draw_parameters::{BackfaceCullingMode, DepthTest, DrawParameters},
     glutin::{
         dpi::LogicalPosition, Api, ContextBuilder, EventsLoop, GlProfile, GlRequest, WindowBuilder,
     },
@@ -57,7 +57,7 @@ impl GuiSystem<()> {
                 write: true,
                 ..Depth::default()
             },
-            backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
+            backface_culling: BackfaceCullingMode::CullClockwise,
             ..DrawParameters::default()
         };
 

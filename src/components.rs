@@ -1,16 +1,16 @@
 //! Common components.
 
-use cgmath::{Deg, Matrix3, Matrix4, Point3, Vector3, Vector4};
+use cgmath::{Deg, InnerSpace, Matrix3, Matrix4, Point3, Vector3, Vector4};
 pub use crate::gui::RenderComponent;
 
 /// A component for an object having a location.
 #[derive(Copy, Clone, Debug)]
 pub struct LocationComponent {
     /// The location of the object.
-    pub xyz: [f32; 3],
+    pub xyz: Point3<f32>,
 
     /// The rotation of the object.
-    pub rotation: [f32; 3],
+    pub rotation: Vector3<f32>,
 
     /// The amount to scale by.
     pub scale: f32,
@@ -20,8 +20,8 @@ impl LocationComponent {
     /// Creates a location component with no rotation and no scale.
     pub fn pos(x: f32, y: f32, z: f32) -> LocationComponent {
         LocationComponent {
-            xyz: [x, y, z],
-            rotation: [0.0, 0.0, 0.0],
+            xyz: Point3::new(x, y, z),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
             scale: 1.0,
         }
     }
@@ -29,16 +29,8 @@ impl LocationComponent {
     /// Moves by the given amount forwards and sideways, adjusted for the rotation matrix.
     pub fn move_by(mut self, forward: f32, strafe: f32) -> LocationComponent {
         let front = Matrix3::from_angle_y(Deg(self.rotation[1])) * Vector3::unit_z();
-        let delta: [f32; 3] = (forward * front).into();
-        for i in 0..3 {
-            self.xyz[i] += delta[i];
-        }
-
-        let delta: [f32; 3] = (strafe * front.cross(Vector3::unit_y())).into();
-        for i in 0..3 {
-            self.xyz[i] += delta[i];
-        }
-
+        self.xyz += forward * front;
+        self.xyz += strafe * front.cross(Vector3::unit_y());
         self
     }
 
@@ -57,9 +49,17 @@ impl LocationComponent {
         self
     }
 
+    /// Returns a forward direction.
+    pub fn forward(&self) -> Vector3<f32> {
+        (Matrix4::from_angle_z(Deg(self.rotation[2]))
+            * Matrix4::from_angle_y(Deg(self.rotation[1]))
+            * Matrix4::from_angle_x(Deg(self.rotation[0]))
+            * Vector4::unit_z()).truncate()
+    }
+
     /// Computes the model matrix.
     pub fn model(&self) -> Matrix4<f32> {
-        Matrix4::from_translation(self.xyz.into())
+        Matrix4::from_translation(Vector3::new(self.xyz.x, self.xyz.y, self.xyz.z))
             * Matrix4::from_angle_z(Deg(self.rotation[2]))
             * Matrix4::from_angle_y(Deg(self.rotation[1]))
             * Matrix4::from_angle_x(Deg(self.rotation[0]))
@@ -68,24 +68,22 @@ impl LocationComponent {
 
     /// Computes the view matrix.
     pub fn view(&self) -> Matrix4<f32> {
-        let direction = Matrix4::from_angle_z(Deg(self.rotation[2]))
-            * Matrix4::from_angle_y(Deg(self.rotation[1]))
-            * Matrix4::from_angle_x(Deg(self.rotation[0]))
-            * Vector4::new(0.0, 0.0, 1.0, 0.0);
+        Matrix4::look_at_dir(self.xyz, self.forward(), Vector3::new(0.0, 1.0, 0.0))
+    }
 
-        Matrix4::look_at_dir(
-            Point3::from(self.xyz),
-            direction.truncate(),
-            Vector3::new(0.0, 1.0, 0.0),
-        )
+    /// Returns whether the two objects collide.
+    pub fn collides(&self, other: &LocationComponent) -> bool {
+        let distance = (self.xyz - other.xyz).magnitude();
+        let min_distance = (self.scale + other.scale) * 2f32.sqrt() / 2.0;
+        distance < min_distance
     }
 }
 
 impl Default for LocationComponent {
     fn default() -> LocationComponent {
         LocationComponent {
-            xyz: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0],
+            xyz: Point3::new(0.0, 0.0, 0.0),
+            rotation: Vector3::new(0.0, 0.0, 0.0),
             scale: 1.0,
         }
     }

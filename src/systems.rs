@@ -1,11 +1,47 @@
 //! Common systems.
 
+use cgmath::{Deg, Matrix3, Vector3};
 pub use crate::gui::{ControlSystem, GuiSystem};
 use crate::{
-    components::{CollisionComponent, DoorComponent, KeyComponent, LocationComponent},
+    components::{
+        CameraComponent, CollisionComponent, DoorComponent, KeyComponent, LocationComponent,
+    },
     State, System,
 };
 use smallvec::SmallVec;
+
+/// A system that lets the user grab keys.
+pub struct HoldSystem;
+
+impl System for HoldSystem {
+    fn step(&mut self, state: &mut State, _dt: u64) {
+        let world = match state {
+            State::Playing(ref mut world) | State::Done(ref mut world, _) => world,
+            _ => return,
+        };
+
+        let camera: LocationComponent = match world.iter().next() {
+            Some((_, hlist_pat![CameraComponent, loc])) => *loc,
+            None => {
+                warn!("No camera?");
+                return;
+            }
+        };
+
+        let held_keys = world
+            .iter()
+            .filter(|(_, hlist_pat![&KeyComponent {held, ..}])| held)
+            .map(|(entity, _)| entity)
+            .collect::<SmallVec<[_; 8]>>();
+
+        for entity in held_keys {
+            let loc: &mut LocationComponent = world.get_mut(entity).unwrap();
+            let forward = Matrix3::from_angle_y(Deg(camera.rotation[1])) * Vector3::unit_z();
+            loc.xyz = camera.xyz + 0.3 * forward;
+            loc.xyz.y = 0.1;
+        }
+    }
+}
 
 /// A system that makes unlocked doors sink.
 pub struct SinkingDoorSystem;
@@ -27,6 +63,38 @@ impl System for SinkingDoorSystem {
             if let Some(LocationComponent { xyz, .. }) = world.get_mut(entity) {
                 xyz[1] -= (dt as f32) / 2500.0;
             }
+        }
+    }
+}
+
+/// A system that lets the user grab keys.
+pub struct SnagSystem;
+
+impl System for SnagSystem {
+    fn step(&mut self, state: &mut State, _dt: u64) {
+        let world = match state {
+            State::Playing(ref mut world) | State::Done(ref mut world, _) => world,
+            _ => return,
+        };
+
+        let camera: LocationComponent = match world.iter().next() {
+            Some((_, hlist_pat![CameraComponent, loc])) => *loc,
+            None => {
+                warn!("No camera?");
+                return;
+            }
+        };
+
+        let snagged_keys = world
+            .iter()
+            .filter(|(_, hlist_pat![loc, &KeyComponent {held, ..}])| !held && camera.collides(loc))
+            .map(|(entity, _)| entity)
+            .collect::<SmallVec<[_; 2]>>();
+
+        for entity in snagged_keys {
+            let KeyComponent { ref mut held, .. } = world.get_mut(entity).unwrap();
+            *held = true;
+            info!("Snagged {}!", entity);
         }
     }
 }

@@ -10,7 +10,10 @@ extern crate structopt;
 
 use failure::{Fallible, ResultExt};
 use game::{
-    systems::{GuiSystem, SinkingDoorSystem, SpinningKeySystem, TheFloorIsLavaSystem},
+    systems::{
+        GuiSystem, HoldSystem, SinkingDoorSystem, SnagSystem, SpinningKeySystem,
+        TheFloorIsLavaSystem,
+    },
     util::log_err,
     State, SystemStepper, World,
 };
@@ -69,7 +72,9 @@ fn run(options: Options) -> Fallible<()> {
     let mut systems = hlist![
         controls,
         gui.add_render_data(render_data),
+        HoldSystem,
         SinkingDoorSystem,
+        SnagSystem,
         SpinningKeySystem,
         TheFloorIsLavaSystem
     ];

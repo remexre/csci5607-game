@@ -1,4 +1,3 @@
-use cgmath::{InnerSpace, Vector3};
 use crate::{
     components::{CameraComponent, CollisionComponent, LocationComponent},
     State, System,
@@ -89,18 +88,9 @@ impl System for ControlSystem {
             .get_one::<LocationComponent>(camera)
             .expect("Camera didn't have a location?");
         let mut new_loc = old_loc.move_by(self.move_forward / 40.0, self.move_strafe / 40.0);
-        let pos = Vector3::from(new_loc.xyz);
 
-        for (_, hlist_pat![&CollisionComponent(c), &LocationComponent{xyz, scale,..}]) in
-            world.iter()
-        {
-            if !c {
-                continue;
-            }
-
-            let distance = (Vector3::from(xyz) - pos).magnitude();
-            let min_distance = (scale + new_loc.scale) * 2f32.sqrt() / 2.0;
-            if distance < min_distance {
+        for (_, hlist_pat![&CollisionComponent(c), loc]) in world.iter() {
+            if c && new_loc.collides(loc) {
                 new_loc = old_loc;
                 break;
             }
