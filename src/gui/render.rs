@@ -15,7 +15,18 @@ use glium::{
 };
 use std::{cell::RefCell, collections::HashMap, ptr::null, rc::Rc, sync::Arc};
 
-/// A graphical component.
+/// A graphical component for a 2d decal, drawn over the screen.
+pub struct DecalComponent {
+    /// Whether the decal is enabled.
+    pub enabled: bool,
+
+    /// The image for the decal.
+    pub image: Arc<RawImage2d<'static, u8>>,
+}
+
+impl_Component!(DecalComponent);
+
+/// A graphical component for a 3d object.
 pub struct RenderComponent {
     /// The model for the component.
     pub model: Arc<Model>,
@@ -30,9 +41,6 @@ pub struct RenderData {
 
     /// The GLSL program.
     pub program: Program,
-
-    /// A map from bumpmap images (by address) to bumpmap textures.
-    bumps: RefCell<HashMap<*const RawImage2d<'static, u8>, Rc<Texture2d>>>,
 
     /// The dimensions of the window.
     pub(super) dims: LogicalSize,
@@ -53,7 +61,6 @@ impl RenderData {
         RenderData {
             clear_color,
             program,
-            bumps: RefCell::new(HashMap::new()),
             dims: LogicalSize::new(0.0, 0.0),
             proj: Matrix4::from_scale(0.0),
             textures: RefCell::new(HashMap::new()),
@@ -75,6 +82,25 @@ impl GuiSystem<RenderData> {
             }
             None => return,
         };
+
+        for (_entity, hlist_pat![decal]) in world.iter() {
+            let decal: &DecalComponent = decal;
+            if !decal.enabled {
+                continue;
+            }
+
+            info!("Rendering decal {}", _entity);
+            let texture = self.get_texture(Some(&decal.image));
+            let uniforms = uniform!{ decal: &*texture };
+            frame
+                .draw(
+                    &self.decal_vbo,
+                    indices,
+                    &self.decal_program,
+                    &uniforms,
+                    &self.params,
+                ).unwrap()
+        }
 
         for (_entity, hlist_pat![render, loc]) in world.iter() {
             let render: &RenderComponent = render;
@@ -113,44 +139,8 @@ impl GuiSystem<RenderData> {
         });
     }
 
-    fn get_model_parts(
-        &self,
-        model: &Model,
-    ) -> (Rc<Texture2d>, Rc<Texture2d>, Rc<VertexBuffer<Vertex>>) {
-        let model_ptr = model as _;
-        if !self.data.vbos.borrow().contains_key(&model_ptr) {
-            let vbo = VertexBuffer::new(&self.display, &model.vertices).unwrap();
-            self.data.vbos.borrow_mut().insert(model_ptr, Rc::new(vbo));
-        }
-        let vbo = self.data.vbos.borrow().get(&model_ptr).unwrap().clone();
-
-        let bump = if let Some(ref bump) = model.material.bump {
-            let bump: &RawImage2d<u8> = &*bump;
-            let bump_ptr = bump as _;
-            if self.data.bumps.borrow().contains_key(&bump_ptr) {
-                self.data.bumps.borrow().get(&bump_ptr).unwrap().clone()
-            } else {
-                // TODO: The fact that this is necessary feels bug-report-worthy...
-                let bump_clone = RawImage2d {
-                    data: bump.data.clone(),
-                    format: bump.format,
-                    height: bump.height,
-                    width: bump.width,
-                };
-                let bump = Rc::new(Texture2d::new(&self.display, bump_clone).unwrap());
-                self.data.bumps.borrow_mut().insert(bump_ptr, bump.clone());
-                bump
-            }
-        } else if self.data.bumps.borrow().contains_key(&null()) {
-            self.data.bumps.borrow().get(&null()).unwrap().clone()
-        } else {
-            let bump =
-                Rc::new(Texture2d::new(&self.display, vec![vec![(0.0, 0.0, 0.0, 0.0)]]).unwrap());
-            self.data.bumps.borrow_mut().insert(null(), bump.clone());
-            bump
-        };
-
-        let texture = if let Some(ref texture) = model.material.texture {
+    fn get_texture(&self, texture: Option<&RawImage2d<'static, u8>>) -> Rc<Texture2d> {
+        if let Some(ref texture) = texture {
             let texture: &RawImage2d<u8> = &*texture;
             let texture_ptr = texture as _;
             if self.data.textures.borrow().contains_key(&texture_ptr) {
@@ -185,7 +175,22 @@ impl GuiSystem<RenderData> {
                 .borrow_mut()
                 .insert(null(), texture.clone());
             texture
-        };
+        }
+    }
+
+    fn get_model_parts(
+        &self,
+        model: &Model,
+    ) -> (Rc<Texture2d>, Rc<Texture2d>, Rc<VertexBuffer<Vertex>>) {
+        let model_ptr = model as _;
+        if !self.data.vbos.borrow().contains_key(&model_ptr) {
+            let vbo = VertexBuffer::new(&self.display, &model.vertices).unwrap();
+            self.data.vbos.borrow_mut().insert(model_ptr, Rc::new(vbo));
+        }
+        let vbo = self.data.vbos.borrow().get(&model_ptr).unwrap().clone();
+
+        let bump = self.get_texture(model.material.bump.as_ref().map(Arc::as_ref));
+        let texture = self.get_texture(model.material.texture.as_ref().map(Arc::as_ref));
 
         (bump, texture, vbo)
     }

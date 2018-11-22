@@ -1,9 +1,18 @@
 //! Miscellaneous utilities.
 
 use failure::{Error, Fallible, ResultExt};
+use glium::texture::RawImage2d;
+use image;
 use serde::Deserialize;
 use serde_json::from_reader;
-use std::{fs::File, io::Read, path::Path, str::FromStr};
+use std::{
+    collections::HashMap,
+    fs::{canonicalize, File},
+    io::Read,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::{Arc, Mutex, Weak},
+};
 
 /// Quick `impl typemap::Key<Value = Self>`.
 macro_rules! impl_Component {
@@ -12,6 +21,39 @@ macro_rules! impl_Component {
             type Value = $ty;
         })*
     }
+}
+
+/// Loads a texture.
+pub fn load_texture(
+    base_path: impl AsRef<Path>,
+    tex_path: impl AsRef<Path>,
+) -> Fallible<Arc<RawImage2d<'static, u8>>> {
+    lazy_static! {
+        static ref TEXTURE_CACHE: Mutex<HashMap<PathBuf, Weak<RawImage2d<'static, u8>>>> =
+            Mutex::new(HashMap::new());
+    }
+
+    let mut cache = TEXTURE_CACHE.lock().unwrap();
+
+    let path = base_path
+        .as_ref()
+        .parent()
+        .map(|p| p.join(tex_path.as_ref()))
+        .unwrap_or_else(|| tex_path.as_ref().to_owned());
+    let path = canonicalize(&path)
+        .with_context(|err| format_err!("While canonicalizing {}: {}", path.display(), err))?;
+    if let Some(texture) = cache.get(&path).and_then(Weak::upgrade) {
+        debug!("Cache hit for {}!", path.display());
+        return Ok(texture);
+    }
+
+    let img = image::open(&path)
+        .with_context(|err| format_err!("Couldn't open image file {}: {}", path.display(), err))?
+        .to_rgba();
+    let dims = img.dimensions();
+    let img = Arc::new(RawImage2d::from_raw_rgba_reversed(&img.into_raw(), dims));
+    cache.insert(path, Arc::downgrade(&img));
+    Ok(img)
 }
 
 /// Logs an error, including its causes and backtrace (if possible).

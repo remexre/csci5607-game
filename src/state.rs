@@ -1,11 +1,11 @@
 use cgmath::{Point3, Vector3};
 use crate::{
     components::{
-        CameraComponent, CollisionComponent, DoorComponent, KeyComponent, LocationComponent,
-        RenderComponent,
+        CameraComponent, CollisionComponent, DecalComponent, DoorComponent, GoalComponent,
+        KeyComponent, LocationComponent, RenderComponent,
     },
     gui::RenderData,
-    util::{read_file, read_file_and_parse_to, read_file_and_unjson},
+    util::{load_texture, read_file, read_file_and_parse_to, read_file_and_unjson},
     Entity, Map, Material, Model, Tile,
 };
 use failure::{Fallible, ResultExt};
@@ -28,9 +28,18 @@ pub enum State {
 }
 
 impl State {
+    /// Returns whether the state indicates that the game has been won.
+    pub fn is_done(&self) -> bool {
+        match *self {
+            State::Done(_, _) => true,
+            _ => false,
+        }
+    }
+
     /// Returns whether the state indicates that closing should occur.
     pub fn should_close(&self) -> bool {
         match *self {
+            State::Done(_, t) => t > 3_500,
             State::Close => true,
             _ => false,
         }
@@ -66,6 +75,19 @@ impl World {
                     xyz: Point3::new(map.start.0 as f32 + 0.5, 0.25, map.start.1 as f32 + 0.5),
                     rotation: Vector3::new(0.0, 0.0, 0.0),
                     scale: 0.2,
+                }
+            ],
+        );
+
+        // Add the goal.
+        world.new_entity(
+            "goal",
+            hlist![
+                GoalComponent,
+                LocationComponent {
+                    xyz: Point3::new(map.goal.0 as f32 + 0.5, 0.5, map.goal.1 as f32 + 0.5),
+                    rotation: Vector3::new(0.0, 0.0, 0.0),
+                    scale: 1.0,
                 }
             ],
         );
@@ -201,6 +223,15 @@ impl World {
                 ],
             );
         }
+
+        // Create the win decal.
+        world.new_entity(
+            "win",
+            hlist![DecalComponent {
+                enabled: false,
+                image: load_texture("", base_path.join(map.win_decal))?,
+            }],
+        );
 
         let render_data = RenderData::new(
             map.clear_color,

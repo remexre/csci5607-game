@@ -14,6 +14,7 @@ out vec2 texcoords;
 
 const vec3 inLightDir = normalize(vec3(1.0, 2.0, 1.0));
 
+
 void main() {
    gl_Position = proj * view * model * vec4(xyz, 1.0);
 

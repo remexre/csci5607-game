@@ -12,7 +12,7 @@ use failure::{Fallible, ResultExt};
 use game::{
     systems::{
         GuiSystem, HoldSystem, SinkingDoorSystem, SnagSystem, SpinningKeySystem,
-        TheFloorIsLavaSystem,
+        TheFloorIsLavaSystem, UnlockSystem, WinSystem,
     },
     util::log_err,
     State, SystemStepper, World,
@@ -76,7 +76,9 @@ fn run(options: Options) -> Fallible<()> {
         SinkingDoorSystem,
         SnagSystem,
         SpinningKeySystem,
-        TheFloorIsLavaSystem
+        TheFloorIsLavaSystem,
+        UnlockSystem,
+        WinSystem,
     ];
     let mut last = Instant::now();
     while !state.should_close() {

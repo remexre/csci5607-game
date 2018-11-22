@@ -36,6 +36,9 @@ pub struct Map {
 
     /// The filename of the vertex shader.
     pub shader_vert: PathBuf,
+
+    /// The decal to display on victory.
+    pub win_decal: PathBuf,
 }
 
 impl FromStr for Map {
@@ -66,6 +69,7 @@ impl FromStr for Map {
             material_wall: None,
             shader_frag: PathBuf::from("main.frag"),
             shader_vert: PathBuf::from("main.vert"),
+            win_decal: PathBuf::from("win.png"),
         };
 
         let mut rest = &s[h_end_idx + 1..];

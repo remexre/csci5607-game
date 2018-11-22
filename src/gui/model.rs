@@ -1,7 +1,7 @@
 use cgmath::{InnerSpace, Vector3};
+use crate::util::load_texture;
 use failure::{Fallible, ResultExt};
 use glium::texture::RawImage2d;
-use image;
 use obj::{Material as MtlMaterial, Mtl};
 use std::{
     collections::HashMap,
@@ -45,8 +45,6 @@ lazy_static! {
     static ref DEFAULT_MATERIAL: Arc<Material> = Arc::new(Material::flat([1.0, 0.0, 1.0]));
     static ref MATERIAL_CACHE: Mutex<HashMap<PathBuf, Weak<Material>>> = Mutex::new(HashMap::new());
     static ref MODEL_CACHE: Mutex<HashMap<PathBuf, Weak<Model>>> = Mutex::new(HashMap::new());
-    static ref TEXTURE_CACHE: Mutex<HashMap<PathBuf, Weak<RawImage2d<'static, u8>>>> =
-        Mutex::new(HashMap::new());
 }
 
 /// A model.
@@ -241,31 +239,4 @@ impl Material {
         cache.insert(path, Arc::downgrade(&mtl));
         Ok(mtl)
     }
-}
-
-fn load_texture(
-    base_path: impl AsRef<Path>,
-    tex_path: impl AsRef<Path>,
-) -> Fallible<Arc<RawImage2d<'static, u8>>> {
-    let mut cache = TEXTURE_CACHE.lock().unwrap();
-
-    let path = base_path
-        .as_ref()
-        .parent()
-        .map(|p| p.join(tex_path.as_ref()))
-        .unwrap_or_else(|| tex_path.as_ref().to_owned());
-    let path = canonicalize(&path)
-        .with_context(|err| format_err!("While canonicalizing {}: {}", path.display(), err))?;
-    if let Some(texture) = cache.get(&path).and_then(Weak::upgrade) {
-        debug!("Cache hit for {}!", path.display());
-        return Ok(texture);
-    }
-
-    let img = image::open(&path)
-        .with_context(|err| format_err!("Couldn't open image file {}: {}", path.display(), err))?
-        .to_rgba();
-    let dims = img.dimensions();
-    let img = Arc::new(RawImage2d::from_raw_rgba_reversed(&img.into_raw(), dims));
-    cache.insert(path, Arc::downgrade(&img));
-    Ok(img)
 }

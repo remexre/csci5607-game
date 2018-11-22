@@ -1,7 +1,7 @@
 //! Common components.
 
 use cgmath::{Deg, InnerSpace, Matrix3, Matrix4, Point3, Vector3, Vector4};
-pub use crate::gui::RenderComponent;
+pub use crate::gui::{DecalComponent, RenderComponent};
 
 /// A component for an object having a location.
 #[derive(Copy, Clone, Debug)]
@@ -102,6 +102,12 @@ impl_Component!(CameraComponent);
 pub struct DoorComponent(pub char);
 
 impl_Component!(DoorComponent);
+
+/// A component for the goal location.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct GoalComponent;
+
+impl_Component!(GoalComponent);
 
 /// A component for a key.
 #[derive(Copy, Clone, Debug, Default)]

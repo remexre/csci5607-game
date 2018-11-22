@@ -23,5 +23,6 @@
   "material_floor": "floor.mtl",
   "material_wall": "wall.mtl",
   "shader_frag": "main.frag",
-  "shader_vert": "main.vert"
+  "shader_vert": "main.vert",
+  "win_decal": "win.png"
 }
