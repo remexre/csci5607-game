@@ -88,7 +88,7 @@ impl System for ControlSystem {
         let old_loc = *world
             .get_one::<LocationComponent>(camera)
             .expect("Camera didn't have a location?");
-        let mut new_loc = old_loc.move_by(self.move_forward / 20.0, self.move_strafe / 20.0);
+        let mut new_loc = old_loc.move_by(self.move_forward / 40.0, self.move_strafe / 40.0);
         let pos = Vector3::from(new_loc.xyz);
 
         for (_, hlist_pat![&CollisionComponent(c), &LocationComponent{xyz, scale,..}]) in

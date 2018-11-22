@@ -62,9 +62,9 @@ impl World {
             hlist![
                 CameraComponent,
                 LocationComponent {
-                    xyz: [map.start.0 as f32 + 0.5, 0.5, map.start.1 as f32 + 0.5],
+                    xyz: [map.start.0 as f32 + 0.5, 0.25, map.start.1 as f32 + 0.5],
                     rotation: [0.0; 3],
-                    scale: 0.25,
+                    scale: 0.1,
                 }
             ],
         );
@@ -89,82 +89,60 @@ impl World {
             ],
         );
 
-        // Load the material.
+        // Load the wall material and model.
         let wall_material = match map.material_wall {
             Some(path) => Some(Material::load_mtl(base_path.join(path))?),
             None => None,
         };
+        let wall_model = Arc::new(Model::cube(wall_material));
 
         // Add the border walls.
-        let wall_x_model = Arc::new(Model::quad_no_stretch(
-            (0.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (x_max, 1.0, 0.0),
-            (x_max, 0.0, 0.0),
-            wall_material.clone(),
-        ));
-        let wall_y_model = Arc::new(Model::quad_no_stretch(
-            (0.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (0.0, 1.0, z_max),
-            (0.0, 0.0, z_max),
-            wall_material.clone(),
-        ));
-        world.new_entity(
-            "wallx0",
-            hlist![
-                RenderComponent {
-                    model: wall_x_model.clone(),
-                },
-                LocationComponent {
-                    xyz: [x_max, 0.0, 0.0],
-                    rotation: [0.0, 180.0, 0.0],
-                    scale: 1.0
-                },
-            ],
-        );
-        world.new_entity(
-            "wally0",
-            hlist![
-                RenderComponent {
-                    model: wall_y_model.clone(),
-                },
-                LocationComponent {
-                    xyz: [0.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0],
-                    scale: 1.0
-                },
-            ],
-        );
-        world.new_entity(
-            "wallx1",
-            hlist![
-                RenderComponent {
-                    model: wall_x_model,
-                },
-                LocationComponent {
-                    xyz: [0.0, 0.0, z_max],
-                    rotation: [0.0, 0.0, 0.0],
-                    scale: 1.0
-                },
-            ],
-        );
-        world.new_entity(
-            "wally1",
-            hlist![
-                RenderComponent {
-                    model: wall_y_model,
-                },
-                LocationComponent {
-                    xyz: [x_max, 0.0, z_max],
-                    rotation: [0.0, 180.0, 0.0],
-                    scale: 1.0
-                },
-            ],
-        );
+        for x in 0..map.dims.0 {
+            world.new_entity(
+                "border-wall",
+                hlist![
+                    RenderComponent {
+                        model: wall_model.clone(),
+                    },
+                    LocationComponent::pos(x as f32 + 0.5, 0.5, map.dims.1 as f32 + 0.5),
+                    CollisionComponent(true),
+                ],
+            );
+            world.new_entity(
+                "border-wall",
+                hlist![
+                    RenderComponent {
+                        model: wall_model.clone(),
+                    },
+                    LocationComponent::pos(x as f32 + 0.5, 0.5, -0.5),
+                    CollisionComponent(true),
+                ],
+            );
+        }
+        for y in 0..map.dims.1 {
+            world.new_entity(
+                "border-wall",
+                hlist![
+                    RenderComponent {
+                        model: wall_model.clone(),
+                    },
+                    LocationComponent::pos(map.dims.0 as f32 + 0.5, 0.5, y as f32 + 0.5),
+                    CollisionComponent(true),
+                ],
+            );
+            world.new_entity(
+                "border-wall",
+                hlist![
+                    RenderComponent {
+                        model: wall_model.clone(),
+                    },
+                    LocationComponent::pos(-0.5, 0.5, y as f32 + 0.5),
+                    CollisionComponent(true),
+                ],
+            );
+        }
 
         // Add the tile walls and doors.
-        let wall_model = Arc::new(Model::cube(wall_material));
         for x in 0..map.dims.0 {
             for y in 0..map.dims.1 {
                 match map.tiles[x + y * map.dims.0] {
@@ -207,9 +185,9 @@ impl World {
                 hlist![
                     RenderComponent { model },
                     LocationComponent {
-                        xyz: [x as f32 + 0.5, 0.25, y as f32 + 0.5],
+                        xyz: [x as f32 + 0.5, 0.1, y as f32 + 0.5],
                         rotation: [0.0; 3],
-                        scale: 0.25,
+                        scale: 0.1,
                     },
                     KeyComponent {
                         letter: ch,
