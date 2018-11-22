@@ -57,6 +57,7 @@ impl GuiSystem<()> {
                 write: true,
                 ..Depth::default()
             },
+            backface_culling: glium::draw_parameters::BackfaceCullingMode::CullClockwise,
             ..DrawParameters::default()
         };
 

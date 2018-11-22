@@ -116,7 +116,11 @@ impl World {
                 RenderComponent {
                     model: wall_x_model.clone(),
                 },
-                LocationComponent::pos(0.0, 0.0, 0.0),
+                LocationComponent {
+                    xyz: [x_max, 0.0, 0.0],
+                    rotation: [0.0, 180.0, 0.0],
+                    scale: 1.0
+                },
             ],
         );
         world.new_entity(
@@ -125,7 +129,11 @@ impl World {
                 RenderComponent {
                     model: wall_y_model.clone(),
                 },
-                LocationComponent::pos(0.0, 0.0, 0.0),
+                LocationComponent {
+                    xyz: [0.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0],
+                    scale: 1.0
+                },
             ],
         );
         world.new_entity(
@@ -134,7 +142,11 @@ impl World {
                 RenderComponent {
                     model: wall_x_model,
                 },
-                LocationComponent::pos(0.0, 0.0, z_max),
+                LocationComponent {
+                    xyz: [0.0, 0.0, z_max],
+                    rotation: [0.0, 0.0, 0.0],
+                    scale: 1.0
+                },
             ],
         );
         world.new_entity(
@@ -143,7 +155,11 @@ impl World {
                 RenderComponent {
                     model: wall_y_model,
                 },
-                LocationComponent::pos(x_max, 0.0, 0.0),
+                LocationComponent {
+                    xyz: [x_max, 0.0, z_max],
+                    rotation: [0.0, 180.0, 0.0],
+                    scale: 1.0
+                },
             ],
         );
 

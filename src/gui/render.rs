@@ -31,6 +31,9 @@ pub struct RenderData {
     /// The GLSL program.
     pub program: Program,
 
+    /// A map from bumpmap images (by address) to bumpmap textures.
+    bumps: RefCell<HashMap<*const RawImage2d<'static, u8>, Rc<Texture2d>>>,
+
     /// The dimensions of the window.
     pub(super) dims: LogicalSize,
 
@@ -50,6 +53,7 @@ impl RenderData {
         RenderData {
             clear_color,
             program,
+            bumps: RefCell::new(HashMap::new()),
             dims: LogicalSize::new(0.0, 0.0),
             proj: Matrix4::from_scale(0.0),
             textures: RefCell::new(HashMap::new()),
@@ -76,10 +80,12 @@ impl GuiSystem<RenderData> {
             let render: &RenderComponent = render;
             let loc: LocationComponent = *loc;
 
-            let (texture, vbo) = self.get_texture_and_vbo(&render.model);
+            let (bump, texture, vbo) = self.get_model_parts(&render.model);
 
             let uniforms = uniform!{
                 ambient: render.model.material.ambient,
+                bump: Sampler::new(&*bump).wrap_function(SamplerWrapFunction::Repeat),
+                bumped: render.model.material.bump.is_some(),
                 diffuse: render.model.material.diffuse,
                 model: Into::<[[f32; 4]; 4]>::into(loc.model()),
                 proj: Into::<[[f32; 4]; 4]>::into(self.data.proj),
@@ -107,13 +113,42 @@ impl GuiSystem<RenderData> {
         });
     }
 
-    fn get_texture_and_vbo(&self, model: &Model) -> (Rc<Texture2d>, Rc<VertexBuffer<Vertex>>) {
+    fn get_model_parts(
+        &self,
+        model: &Model,
+    ) -> (Rc<Texture2d>, Rc<Texture2d>, Rc<VertexBuffer<Vertex>>) {
         let model_ptr = model as _;
         if !self.data.vbos.borrow().contains_key(&model_ptr) {
             let vbo = VertexBuffer::new(&self.display, &model.vertices).unwrap();
             self.data.vbos.borrow_mut().insert(model_ptr, Rc::new(vbo));
         }
         let vbo = self.data.vbos.borrow().get(&model_ptr).unwrap().clone();
+
+        let bump = if let Some(ref bump) = model.material.bump {
+            let bump: &RawImage2d<u8> = &*bump;
+            let bump_ptr = bump as _;
+            if self.data.bumps.borrow().contains_key(&bump_ptr) {
+                self.data.bumps.borrow().get(&bump_ptr).unwrap().clone()
+            } else {
+                // TODO: The fact that this is necessary feels bug-report-worthy...
+                let bump_clone = RawImage2d {
+                    data: bump.data.clone(),
+                    format: bump.format,
+                    height: bump.height,
+                    width: bump.width,
+                };
+                let bump = Rc::new(Texture2d::new(&self.display, bump_clone).unwrap());
+                self.data.bumps.borrow_mut().insert(bump_ptr, bump.clone());
+                bump
+            }
+        } else if self.data.bumps.borrow().contains_key(&null()) {
+            self.data.bumps.borrow().get(&null()).unwrap().clone()
+        } else {
+            let bump =
+                Rc::new(Texture2d::new(&self.display, vec![vec![(0.0, 0.0, 0.0, 0.0)]]).unwrap());
+            self.data.bumps.borrow_mut().insert(null(), bump.clone());
+            bump
+        };
 
         let texture = if let Some(ref texture) = model.material.texture {
             let texture: &RawImage2d<u8> = &*texture;
@@ -152,6 +187,6 @@ impl GuiSystem<RenderData> {
             texture
         };
 
-        (texture, vbo)
+        (bump, texture, vbo)
     }
 }

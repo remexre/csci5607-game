@@ -184,6 +184,9 @@ pub struct Material {
     /// The diffuse color.
     pub diffuse: [f32; 3],
 
+    /// The normal map, if any.
+    pub bump: Option<Arc<RawImage2d<'static, u8>>>,
+
     /// The texture, if any.
     pub texture: Option<Arc<RawImage2d<'static, u8>>>,
 }
@@ -196,6 +199,7 @@ impl Material {
         Material {
             ambient: color,
             diffuse: color,
+            bump: None,
             texture: None,
         }
     }
@@ -225,6 +229,10 @@ impl Material {
         let mtl = Arc::new(Material {
             ambient: mtl.ka.unwrap_or_default(),
             diffuse: mtl.kd.unwrap_or_default(),
+            bump: match mtl.map_bump.as_ref() {
+                Some(tex_path) => Some(load_texture(&path, tex_path)?),
+                None => None,
+            },
             texture: match mtl.map_kd.as_ref() {
                 Some(tex_path) => Some(load_texture(&path, tex_path)?),
                 None => None,
